@@ -237,6 +237,7 @@ export function LobbyScreen() {
   const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   const mm = useStore((s) => s.matchmaking);
+  const vote = useStore((s) => s.matchVote);
   useData('config');
   const [roomMode, setRoomMode] = useState(() => {
     const m = loadPref('lobby.mode', 'coop');
@@ -309,6 +310,7 @@ export function LobbyScreen() {
   // tired of waiting: the queued group enters one room and starts at once —
   // directly (short-handed) or with AI teammates filling the empty seats
   const startNow = (withBots) => run(withBots ? 'startNowBots' : 'startNow', () => net.request('matchmaking.startNow', { withBots }));
+  const castVote = (agree) => run(agree ? 'voteYes' : 'voteNo', () => net.request('matchmaking.vote', { agree }));
 
   // alliance match: while queued, the create box becomes the matching status with a cancel button
   const matching = mm && mm.inQueue;
@@ -370,18 +372,41 @@ export function LobbyScreen() {
         </div>
         <div class="create-box">
           ${matching ? html`
-            <div class="match-start-row">
-              <${Tooltip} block=${true} text=${online ? '以当前匹配到的博士直接开局（人数不足，不补 AI）' : '正在连接服务器…'}>
-                <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
-                  直接开始
+            ${vote ? html`
+              <div class="vote-box">
+                <div class="vote-box__title">
+                  <${Icon} name="vote" />
+                  <span>${vote.initiatorName} 发起投票：${vote.withBots ? 'AI 补位开始' : '直接开始'}</span>
+                </div>
+                <div class="vote-box__progress">
+                  <span class="t-mint">同意 <span class="num">${vote.agree}</span></span>
+                  <span class="t-dim"> / </span>
+                  <span class="t-orange">拒绝 <span class="num">${vote.disagree}</span></span>
+                  <span class="t-dim">（需 <span class="num">${vote.needed}</span> 票通过，共 <span class="num">${vote.total}</span> 人）</span>
+                </div>
+                <div class="match-start-row">
+                  <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => castVote(true)}>
+                    同意
+                  <//>
+                  <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => castVote(false)}>
+                    拒绝
+                  <//>
+                </div>
+              </div>
+            ` : html`
+              <div class="match-start-row">
+                <${Tooltip} block=${true} text=${online ? '以当前匹配到的博士直接开局（人数不足，不补 AI）' : '正在连接服务器…'}>
+                  <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
+                    直接开始
+                  <//>
                 <//>
-              <//>
-              <${Tooltip} block=${true} text=${online ? 'AI 队友补齐空位至 4 人后开局' : '正在连接服务器…'}>
-                <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
-                  AI 补位开始
+                <${Tooltip} block=${true} text=${online ? 'AI 队友补齐空位至 4 人后开局' : '正在连接服务器…'}>
+                  <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
+                    AI 补位开始
+                  <//>
                 <//>
-              <//>
-            </div>
+              </div>
+            `}
             <div class="create-box__hint">
               ${online
                 ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士</span>`

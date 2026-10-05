@@ -268,7 +268,9 @@ export const C2S = {
   'matchmaking.leave': {},
   // the queued group is tired of waiting: they enter one room and the match starts at once.
   // withBots fills the empty seats with AI teammates; without, the humans play short-handed.
+  // With 2+ queued, startNow opens a majority vote (initiator auto-agrees); matchmaking.vote casts a ballot.
   'matchmaking.startNow': { withBots: (v) => typeof v === 'boolean' },
+  'matchmaking.vote': { agree: (v) => typeof v === 'boolean' },
 
   // match
   'g.infoReady': {},

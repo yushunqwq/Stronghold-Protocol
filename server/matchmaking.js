@@ -10,8 +10,9 @@
 //     runs a match fails with ROOM_STARTED.
 //   * only real players are matched (never bots); a team forms only when 4 are queued — no timeout,
 //     no short teams. Cancel anytime with `matchmaking.leave`; `matchmaking.startNow { withBots }`
-//     skips the wait: the queued group enters one room and the match starts at once (AI fills the
-//     empty seats when withBots, otherwise the humans play short-handed).
+//     skips the wait but needs the group's vote: with 2+ queued, a majority vote (initiator
+//     auto-agrees, 30s timeout) decides; alone, it starts at once. `matchmaking.vote { agree }` casts
+//     a ballot; `matchmaking.voteState` follows the vote, `matchmaking.voteEnd { passed }` closes it.
 //   * disconnect / expiry / a manual room.create/join/spectate drops the entry (the tick also sweeps
 //     entries whose session is gone, disconnected, or seated meanwhile).
 //   * `matchmaking.state { inQueue, waiting, difficulty }` is pushed to the entry's difficulty group on
@@ -30,6 +31,7 @@ export const MATCHMAKING_DEFAULTS = Object.freeze({
   teamSize: 4,          // humans per formed team (real players only — never bots, never short teams)
   tickMs: 2000,         // 0 = no timer (tests drive tick() by hand)
   maxQueue: 200,
+  voteTimeoutMs: 30000, // a startNow vote fails if it does not pass within this
 });
 
 export class Matchmaker {
@@ -43,6 +45,8 @@ export class Matchmaker {
     this.opts = { ...MATCHMAKING_DEFAULTS, ...options };
     /** @type {Map<string, { playerId: string, difficulty: string, joinedAt: number }>} */
     this.queue = new Map();
+    /** @type {Map<string, { difficulty: string, withBots: boolean, initiator: string, memberIds: string[], votes: Map<string, boolean>, createdAt: number }>} */
+    this.votes = new Map(); // startNow votes, keyed by difficulty
     this._timers = timers || { set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t) };
     this._timer = null;
     this._disposed = false;
@@ -105,23 +109,90 @@ export class Matchmaker {
   }
 
   /**
-   * `matchmaking.startNow { withBots }` — the group is tired of waiting: take all queued players of
-   * the requester's difficulty into one room and start the match immediately. With `withBots`, AI
-   * teammates fill the empty seats to `teamSize`; without, the humans play short-handed.
+   * `matchmaking.startNow { withBots }` — the group is tired of waiting. Alone in the queue, the
+   * match starts at once; with 2+ queued, a majority vote decides (the initiator auto-agrees).
    * @param {import('./net.js').Session} session
    */
   startNow(session, { withBots }) {
-    const lobby = this.lobby;
     const pid = session.playerId;
     const e = this.queue.get(pid);
     if (!e) return fail(ERR.BAD_MSG, 'not in matchmaking queue');
     const difficulty = e.difficulty;
-    // the whole difficulty group starts together
+    if (this.votes.has(difficulty)) return fail(ERR.ALREADY, 'a vote is already running');
     const team = [];
     for (const en of this.queue.values()) {
       if (en.difficulty === difficulty) team.push(en);
     }
     team.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
+    if (team.length <= 1) {
+      // alone: no vote needed
+      return this._startNowTeam(team, !!withBots, difficulty);
+    }
+    // open a vote; the initiator auto-agrees
+    const vote = {
+      difficulty,
+      withBots: !!withBots,
+      initiator: pid,
+      memberIds: team.map((en) => en.playerId),
+      votes: new Map([[pid, true]]),
+      createdAt: this.now(),
+    };
+    this.votes.set(difficulty, vote);
+    this._broadcastVote(vote);
+    this._checkVote(vote);
+    this.lobby.log.info(`[matchmaking] ${difficulty} startNow vote opened by ${session.name} (withBots=${vote.withBots}, ${team.length} voters)`);
+    return OK;
+  }
+
+  /**
+   * `matchmaking.vote { agree }` — cast (or change) a ballot in the difficulty's startNow vote.
+   * @param {import('./net.js').Session} session
+   */
+  vote(session, { agree }) {
+    const pid = session.playerId;
+    for (const vote of this.votes.values()) {
+      if (!vote.memberIds.includes(pid)) continue;
+      vote.votes.set(pid, !!agree);
+      this._broadcastVote(vote);
+      this._checkVote(vote);
+      return OK;
+    }
+    return fail(ERR.BAD_MSG, 'no active vote');
+  }
+
+  /** A majority agree starts the match; a majority disagree (or impossibility) fails the vote. */
+  _checkVote(vote) {
+    if (!this.votes.has(vote.difficulty)) return; // already resolved
+    const total = vote.memberIds.length;
+    const needed = Math.floor(total / 2) + 1;
+    let agree = 0;
+    for (const v of vote.votes.values()) if (v) agree++;
+    if (agree >= needed) {
+      this.votes.delete(vote.difficulty);
+      this._broadcastVoteEnd(vote, true);
+      const team = vote.memberIds
+        .map((id) => this.queue.get(id))
+        .filter((en) => en && en.difficulty === vote.difficulty);
+      team.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
+      this._startNowTeam(team, vote.withBots, vote.difficulty);
+      return;
+    }
+    const disagree = vote.votes.size - agree;
+    if (total - disagree < needed) {
+      // can no longer pass
+      this.votes.delete(vote.difficulty);
+      this._broadcastVoteEnd(vote, false);
+      this.lobby.log.info(`[matchmaking] ${vote.difficulty} startNow vote rejected`);
+    }
+  }
+
+  /**
+   * Take the queued team into one room and start the match immediately. With `withBots`, AI
+   * teammates fill the empty seats to `teamSize`; without, the humans play short-handed.
+   * A failure re-queues the humans with their original wait instead of throwing.
+   */
+  _startNowTeam(team, withBots, difficulty) {
+    const lobby = this.lobby;
     const members = [];
     for (const en of team) {
       const s = lobby.registry.byId(en.playerId);
@@ -180,8 +251,8 @@ export class Matchmaker {
   }
 
   /**
-   * Sweep stale entries, then seat complete teams (exactly `teamSize` real players, same difficulty)
-   * in fresh rooms whose match starts immediately.
+   * Sweep stale entries, expire old startNow votes, then seat complete teams (exactly `teamSize`
+   * real players, same difficulty) in fresh rooms whose match starts immediately.
    */
   tick() {
     const lobby = this.lobby;
@@ -191,6 +262,14 @@ export class Matchmaker {
       if (!s || !s.connected || lobby.roomOf(s)) { this.queue.delete(pid); touched.add(e.difficulty); }
     }
     for (const d of touched) this._broadcastGroup(d);
+    const now = this.now();
+    // startNow votes that never passed expire
+    for (const [diff, vote] of this.votes) {
+      if (now - vote.createdAt >= this.opts.voteTimeoutMs) {
+        this.votes.delete(diff);
+        this._broadcastVoteEnd(vote, false);
+      }
+    }
     const groups = new Map();
     for (const e of this.queue.values()) {
       if (!groups.has(e.difficulty)) groups.set(e.difficulty, []);
@@ -266,6 +345,13 @@ export class Matchmaker {
       if (s && s.connected) sendSession(s, { t: 'matchmaking.state', inQueue: false });
     }
     this._broadcastGroup(e.difficulty);
+    // a member leaving cancels the difficulty's startNow vote
+    for (const [diff, vote] of this.votes) {
+      if (vote.memberIds.includes(playerId)) {
+        this.votes.delete(diff);
+        this._broadcastVoteEnd(vote, false);
+      }
+    }
     return true;
   }
 
@@ -286,6 +372,38 @@ export class Matchmaker {
       if (e.difficulty !== difficulty) continue;
       const s = this.lobby.registry.byId(e.playerId);
       if (s && s.connected) sendSession(s, { t: 'matchmaking.state', inQueue: true, waiting, difficulty });
+    }
+  }
+
+  /** Push the vote status to every voter. */
+  _broadcastVote(vote) {
+    const total = vote.memberIds.length;
+    const needed = Math.floor(total / 2) + 1;
+    let agree = 0;
+    const voted = [];
+    for (const [pid, v] of vote.votes) {
+      voted.push(pid);
+      if (v) agree++;
+    }
+    const initiator = this.lobby.registry.byId(vote.initiator);
+    for (const pid of vote.memberIds) {
+      const s = this.lobby.registry.byId(pid);
+      if (!s || !s.connected) continue;
+      sendSession(s, {
+        t: 'matchmaking.voteState',
+        withBots: vote.withBots,
+        initiatorName: initiator ? initiator.name : '博士',
+        agree, disagree: vote.votes.size - agree, total, needed,
+        voted, // playerIds that already voted
+      });
+    }
+  }
+
+  /** Tell every voter the vote is over (passed → the match starts; failed → back to waiting). */
+  _broadcastVoteEnd(vote, passed) {
+    for (const pid of vote.memberIds) {
+      const s = this.lobby.registry.byId(pid);
+      if (s && s.connected) sendSession(s, { t: 'matchmaking.voteEnd', passed });
     }
   }
 
