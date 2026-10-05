@@ -306,6 +306,8 @@ export function LobbyScreen() {
     ? run('create', () => net.request('matchmaking.join', { difficulty }))
     : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
   const cancelMatch = () => run('cancel', () => net.request('matchmaking.leave', {}));
+  // tired of waiting: AI teammates fill the empty seats and the match starts at once
+  const startNow = () => run('startNow', () => net.request('matchmaking.startNow', {}));
 
   // alliance match: while queued, the create box becomes the matching status with a cancel button
   const matching = mm && mm.inQueue;
@@ -368,15 +370,20 @@ export function LobbyScreen() {
         <div class="create-box">
           ${matching ? html`
             <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-              <${Button} variant="secondary" size="xl" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
-                取消匹配
+              <${Button} variant="primary" size="xl" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${startNow}>
+                直接开始
               <//>
             <//>
             <div class="create-box__hint">
               ${online
-                ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士</span>`
+                ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士 · 不等了？AI 自动补位直接开局</span>`
                 : html`<${Spinner} size="sm" label="CONNECTING" />`}
             </div>
+            <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
+              <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
+                取消匹配
+              <//>
+            <//>
           ` : html`
             <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
               <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>

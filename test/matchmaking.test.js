@@ -162,12 +162,43 @@ describe('matchmaking queue', () => {
       for (const c of ps) assert.equal(srv.lobby.matchmaker.queued(c.id), true);
     } finally { await closeAll(); }
   });
+
+  test('startNow: tired of waiting → AI fills the seats and the match starts', async () => {
+    const [a, b] = await Promise.all([player('impatient'), player('patient2')]);
+    try {
+      await mmJoin(a, 'NORMAL');
+      await mmJoin(b, 'NORMAL');
+      srv.lobby.matchmaker.tick();
+      // only 2 queued: no team forms yet
+      await a.expectNone('matchmaking.found', () => true, 200);
+      // a skips the wait: AI teammates fill the empty seats, the match starts at once
+      const r = await a.request({ t: 'matchmaking.startNow' });
+      assert.equal(r.t, 'ok', JSON.stringify(r));
+      const found = await a.waitFor('matchmaking.found', undefined, 3000);
+      const st = await a.waitFor('room.state', (s) => s.code === found.code && s.inMatch === true, 3000);
+      assert.equal(st.seats.filter((s) => s && !s.isBot).length, 1, 'only the requester');
+      assert.equal(st.seats.filter((s) => s && s.isBot).length, 3, 'AI fills the rest');
+      assert.equal(srv.lobby.matchmaker.queued(a.id), false, 'no longer queued');
+      // the other queued player is unaffected
+      assert.equal(srv.lobby.matchmaker.queued(b.id), true, 'still waiting');
+      await b.expectNone('matchmaking.found', () => true, 200);
+    } finally { await closeAll(); }
+  });
+
+  test('startNow without queueing fails', async () => {
+    const c = await player('loner');
+    try {
+      const bad = await c.request({ t: 'matchmaking.startNow' });
+      assert.equal(bad.t, 'error');
+    } finally { await closeAll(); }
+  });
 });
 
 describe('matchmaking protocol', () => {
   test('validateC2S accepts the new messages, rejects bad fields', () => {
     assert.equal(validateC2S({ t: 'matchmaking.join', difficulty: 'NORMAL' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.startNow' }), null);
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }), null);
     // unknown fields are ignored, not rejected
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
