@@ -34,12 +34,7 @@ import { ToastHost, toast, toastError, describeError } from './ui/toasts.js';
 import { net, identity, NetError } from './net.js';
 import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating } from './store.js';
 import { data } from './data.js';
-import { GAME_FILES, makeLookups } from './ui/gameComponents.js';
-import { isCombatPhase } from './ui/gameLogic.js';
-import { assets } from './assets.js';
-import { audio } from './audio.js';
-import { collectLobbyPlan, collectMatchPlan, runPreload, planTotal } from './preload.js';
-import { PreloadOverlay } from './ui/preloadOverlay.js';
+import { GAME_FILES } from './ui/gameComponents.js';
 import { TitleScreen, sanitizeName } from './screens/title.js';
 import { LobbyScreen, rememberRoom, parseRoomParam } from './screens/lobby.js';
 import { RoomScreen } from './screens/room.js';
@@ -51,7 +46,6 @@ import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { installLoadoutSync } from './ui/loadoutSync.js';
 import { startBuildGuard } from './ui/buildGuard.js';
-import { PHASE } from '../../shared/constants.js';
 
 const RESTORE_GRACE_MS = 1500;
 const JOIN_DELAY_MS = 350;
@@ -257,10 +251,9 @@ function wireNet() {
 
   // Entering (title → lobby) while already online also needs the deep-link join.
   store.subscribe((s, prev) => {
-    if (s.session.entered && !prev.session.entered) { schedulePendingJoin(); warmLobbyAssets(); }
+    if (s.session.entered && !prev.session.entered) schedulePendingJoin();
     // in a room (co-op or solo, also a resumed one) a match is near: its data starts downloading
     if (s.room && !prev.room) warmGameData();
-    matchPreloadTick(s);
   });
 }
 
@@ -275,88 +268,6 @@ function warmGameData() {
   const go = () => { data.loadAll(GAME_FILES).catch(() => {}); };
   if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(go, { timeout: 2500 });
   else setTimeout(go, 600);
-}
-
-// ---- resource preloading (js/preload.js) ------------------------------------------------------------------
-
-/**
- * Preload the lobby tier (title/lobby/room art, profession icons, UI SFX, lobby BGM) once the player has
- * entered, in idle time and silently: the shell never pops art in late. Idempotent.
- */
-let lobbyPreloaded = false;
-function warmLobbyAssets() {
-  if (lobbyPreloaded) return;
-  lobbyPreloaded = true;
-  const go = () => {
-    const plan = collectLobbyPlan(data.get('assets'));
-    if (planTotal(plan) === 0) return;
-    runPreload(plan, { assets, audio, label: '正在预载界面资源' });
-  };
-  if (typeof globalThis.requestIdleCallback === 'function') globalThis.requestIdleCallback(go, { timeout: 4000 });
-  else setTimeout(go, 800);
-}
-
-/** Phases early enough that preloading the match still beats the battle. */
-const PRELOADABLE_PHASES = new Set([PHASE.INFO_CHECK, PHASE.BAND_DRAFT, PHASE.BATTLE_CHECK, PHASE.ROUND_START, PHASE.SP_DRAFT, PHASE.PREP]);
-
-let matchPreloadFor = null;   // room code whose match assets were preloaded
-let heldSpinesRelease = null; // release() of the held match Spine models
-
-function releaseMatchSpines() {
-  if (heldSpinesRelease) { try { heldSpinesRelease(); } catch { /* ignore */ } heldSpinesRelease = null; }
-}
-
-/**
- * When a match's public state first arrives early enough, preload the match tier in the background with a
- * floating, skippable progress card (ui/preloadOverlay.js): the boss + faction-pool enemy icons and Spine
- * models, this match's bond / band icons, the player's own loadout operators, the combat BGM and battle SFX.
- * The Spine models stay held until the first battle (its views take their own refs then) or the match ends,
- * so the opening fights never wait on a download.
- */
-async function startMatchPreload(pub) {
-  releaseMatchSpines();
-  try {
-    await data.loadAll(GAME_FILES); // shared, idempotent — the collectors need chess / bosses / factions
-  } catch { /* collectors tolerate missing data */ }
-  const s = store.get();
-  const me = s.me.playerId;
-  const seat = Array.isArray(s.room?.seats) ? s.room.seats.find((x) => x && x.playerId === me) : null;
-  const loadoutIds = seat && seat.loadout && typeof seat.loadout === 'object' ? Object.keys(seat.loadout) : [];
-  const plan = collectMatchPlan(data.get('assets'), pub, makeLookups(true), loadoutIds);
-  const total = planTotal(plan);
-  if (total === 0) return;
-  const label = '正在预载对局资源';
-  store.patch('ui', { preload: { open: true, done: 0, total, label, skippable: true } });
-  try {
-    const res = await runPreload(plan, {
-      assets, audio, holdSpines: true, label,
-      onProgress: (done, t) => {
-        const cur = store.get().ui.preload;
-        if (cur && cur.open) store.patch('ui', { preload: { ...cur, done, total: t } });
-      },
-    });
-    // a cancelled run already released its models (runPreload); a finished one keeps them for the battle
-    if (!res.cancelled) heldSpinesRelease = res.release;
-  } finally {
-    const cur = store.get().ui.preload;
-    if (cur && cur.open) store.patch('ui', { preload: null });
-  }
-}
-
-/** Watch m.public / the room for when to start the match preload and when to let its models go. */
-function matchPreloadTick(s) {
-  const pub = s.match.public;
-  const code = s.room && typeof s.room.code === 'string' ? s.room.code : null;
-  if (!code) {
-    if (matchPreloadFor) { matchPreloadFor = null; releaseMatchSpines(); }
-    return;
-  }
-  if (pub && PRELOADABLE_PHASES.has(pub.phase) && matchPreloadFor !== code) {
-    matchPreloadFor = code;
-    startMatchPreload(pub);
-  }
-  // the battle's views have their own Spine refs now (or the match is over): let the held models go
-  if (heldSpinesRelease && (!pub || isCombatPhase(pub.phase))) releaseMatchSpines();
 }
 
 // ---- UI chrome (the connection banner lives in ui/connBanner.js) -----------------------------------
@@ -381,7 +292,6 @@ function App() {
     ${error ? html`<${ScreenCrashed} error=${error} reset=${resetError} />` : html`<${Screen} key=${route} />`}
     <${ConnectionBanner} />
     <${ToastHost} />
-    <${PreloadOverlay} />
     <${UiHosts} />
     <${GuideHost} />
     <${LoadoutHost} />
