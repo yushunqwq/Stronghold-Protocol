@@ -1884,6 +1884,9 @@ export async function createFieldView(host, options = {}) {
       interp.delay = on ? 0.034 : 0.1;
       interp.defaultRate = on ? Math.min(20, speed) : 2;
       interp.maxRate = on ? Math.max(8, speed * 1.5) : 8;
+      // snap the estimated rate at once: otherwise the render clock keeps the old speed until the
+      // arrival-based EMA adapts (noticeable lag when dropping from 2× back to 1×)
+      if (on) interp.rate = Math.min(Math.max(speed, interp.minRate), interp.maxRate);
       return true;
     },
     highlightTiles(tilesList, style) {
