@@ -1,0 +1,91 @@
+/* preload.css — 资源预载悬浮进度卡片 (js/ui/preloadOverlay.js).
+   A small non-modal card docked at the bottom of the screen: it reports the preload progress
+   without blocking whatever is behind it. */
+
+.preload-card {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  min-width: 12rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: .55rem .8rem .6rem;
+  background: var(--bg-glass);
+  border: 1px solid var(--line-2);
+  border-radius: .5rem;
+  box-shadow: 0 .4rem 1.2rem rgba(0, 0, 0, .5);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  animation: preload-in .25s ease-out;
+}
+
+@keyframes preload-in {
+  from { opacity: 0; transform: translate(-50%, .4rem); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.preload-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .8rem;
+}
+
+.preload-card__label {
+  font-size: .3rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preload-card__pct {
+  font-size: .34rem;
+  color: var(--mint-400);
+}
+
+.preload-card__bar {
+  height: .22rem;
+  border-radius: .11rem;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.preload-card__bar i {
+  display: block;
+  height: 100%;
+  border-radius: .11rem;
+  background: linear-gradient(90deg, var(--mint-700), var(--mint-400));
+  box-shadow: 0 0 .3rem var(--mint-a35);
+  transition: width .2s ease-out;
+}
+
+.preload-card__skip {
+  align-self: flex-end;
+  margin-top: .1rem;
+  padding: .12rem .5rem;
+  font-size: .28rem;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: .3rem;
+  cursor: pointer;
+}
+
+.preload-card__skip:hover {
+  color: var(--text-hi);
+  border-color: var(--line-3);
+}
+
+@media (max-width: 640px) {
+  .preload-card {
+    min-width: 10rem;
+    bottom: calc(.7rem + env(safe-area-inset-bottom, 0px));
+  }
+}
