@@ -152,13 +152,13 @@ export class Room {
     this.createdAt = now;
     this.disposed = false;
     /**
-     * quick-match seeking (server/matchmaking.js `matchmaking.seek`): timestamp when the host opened
-     * the room's empty seats to the queue, null when not seeking. Seeking only fills seats; the host
+     * quick-match seeking (`matchmaking.seek`): timestamp when the host opened the room's empty
+     * seats to quick-match newcomers, null when not seeking. Seeking only fills seats; the host
      * always starts the match by hand.
      * @type {number | null}
      */
     this.seeking = null;
-    /** true when the room was formed by the quick-match queue (its lobby button reads 开始匹配) */
+    /** true for quick-match rooms (created via the 快速匹配 card; their lobby button reads 开始匹配) */
     this.quickMatch = false;
   }
 
@@ -359,10 +359,26 @@ export class Lobby {
   // room.* handlers
   // ---------------------------------------------------------------------------------------------------
 
-  create(session, { mode, difficulty }) {
+  create(session, { mode, difficulty, quickMatch }) {
     const cur = this.roomOf(session);
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     this.matchmaker.leave(session.playerId); // a new room cancels matchmaking (idempotent)
+    const qm = quickMatch === true && mode === 'coop';
+    // Quick match (快速匹配): the player wants a room NOW, not a queue. If a seeking quick-match
+    // room has a free seat at this difficulty, seat them there directly — that is the actual
+    // "matching". Otherwise fall through and open a fresh quick-match room as host.
+    if (qm) {
+      const target = this.findSeekingRoom(difficulty);
+      if (target) {
+        const jr = this.join(session, { code: target.code });
+        if (!jr || !jr.error) {
+          sendSession(session, { t: 'matchmaking.found', code: target.code });
+          this.log.info(`[lobby] ${session.name} quick-matched into ${target.code}`);
+          return OK;
+        }
+        // the seat filled between the lookup and the join: fall through and open a new room
+      }
+    }
     if (this.rooms.size >= this.opts.maxRooms) return fail(ERR.INTERNAL, 'too many rooms');
     const key = session.limitKey || null;
     if (key && this.opts.maxRoomsPerAddr > 0) {
@@ -378,6 +394,7 @@ export class Lobby {
     if (cur) this.removeMember(cur, session.playerId);
     const room = new Room(code, mode, difficulty, this.now());
     room.ownerKey = key;
+    if (qm) room.quickMatch = true; // the room lobby reads 开始匹配 (the host adds bots, then seeks/starts)
     room.seats[0] = this.humanSeat(0, session);
     room.hostId = session.playerId;
     this.rooms.set(code, room);
@@ -549,9 +566,27 @@ export class Lobby {
   }
 
   /**
-   * matchmaking.seek { on }: the host opens the room's empty seats to the quick-match queue
-   * (server/matchmaking.js fills them on its tick). Seeking only fills seats — the host always
-   * starts the match by hand. Solo rooms cannot seek.
+   * Oldest quick-match room (same difficulty) whose host opened it with `matchmaking.seek` and
+   * still has a free human seat, or null. Quick-match `room.create` seats the player there
+   * directly instead of opening yet another room.
+   */
+  findSeekingRoom(difficulty) {
+    let best = null;
+    for (const room of this.rooms.values()) {
+      if (!room.quickMatch || room.seeking == null || room.match || room.disposed) continue;
+      if (room.difficulty !== difficulty) continue;
+      if (room.freeSeat() < 0) continue;
+      // a room whose humans all disconnected (grace period, not yet disposed) is not a target
+      if (!room.seats.some((s) => s && !s.isBot && !s.left && s.connected)) continue;
+      if (!best || room.seeking < best.seeking) best = room;
+    }
+    return best;
+  }
+
+  /**
+   * matchmaking.seek { on }: the host opens the room's empty seats to quick-match players
+   * (quick-match `room.create` seats newcomers here directly). Seeking only fills seats — the host
+   * always starts the match by hand. Solo rooms cannot seek.
    */
   seekMatchmaking(session, { on }) {
     const room = this.roomOf(session);
