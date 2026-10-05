@@ -15,7 +15,7 @@
 .lobby-left, .lobby-right { display: flex; flex-direction: column; min-width: 0; }
 
 /* ---- mode cards ------------------------------------------------------------------------------------ */
-.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: .24rem; margin-bottom: .34rem; }
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .24rem; margin-bottom: .34rem; }
 .mode-card {
   --bk-c: transparent;
   --bk-l: .2rem;
@@ -240,14 +240,11 @@
 .create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: .14rem; color: var(--text-lo); }
 
 /* ---- quick match (快速匹配, js/screens/lobby.js) ------------------------------------------------------- */
-.mm-panel .panel__body { padding: .22rem .26rem; }
-.mm-idle { display: flex; align-items: center; justify-content: space-between; gap: .3rem; }
-.mm-idle__text { display: flex; flex-direction: column; gap: .08rem; font-size: .3rem; color: var(--text-hi); }
-.mm-idle__text .t-dim { font-size: .24rem; }
-.mm-queue { display: flex; align-items: center; gap: .3rem; }
-.mm-queue__text { display: flex; flex-direction: column; gap: .08rem; flex: 1; font-size: .3rem; color: var(--text-hi); }
-.mm-queue__text .t-dim { font-size: .24rem; }
+.mm-queuebox .panel__body { padding: .22rem .26rem; }
+.mm-queuebox__row { display: flex; align-items: center; gap: .3rem; }
+.mm-queuebox__text { display: flex; flex-direction: column; gap: .08rem; flex: 1; font-size: .3rem; color: var(--text-hi); }
+.mm-queuebox__text .t-dim { font-size: .24rem; }
 @media (max-width: 640px) {
-  .mm-idle { flex-direction: column; align-items: stretch; }
-  .mm-queue { flex-wrap: wrap; }
+  .mode-cards { grid-template-columns: 1fr; }
+  .mm-queuebox__row { flex-wrap: wrap; }
 }
