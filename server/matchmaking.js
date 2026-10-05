@@ -1,10 +1,10 @@
 // server/matchmaking.js — quick-match queue (快速匹配).
 //
 // Players opt in with `matchmaking.join { difficulty }`; the matchmaker groups them by difficulty and,
-// on every tick, forms a co-op room for each complete team: empty seats are filled with AI teammates,
-// every human is marked ready, and the match starts at once (the briefing's INFO_CHECK still gives
-// everyone the loadout window). A group that never completes is formed anyway once its longest-waiting
-// player hits `queueTimeoutMs` — one human plus bots beats waiting forever on a quiet server.
+// on every tick, seats each complete team in a fresh co-op room. The room is an ordinary room from then
+// on: its host (the first queued) adds AI teammates and starts the match from the room lobby
+// (room.addBot / room.start) like any other room. A group that never completes is seated anyway once
+// its longest-waiting player hits `queueTimeoutMs` — one human plus bots beats waiting forever.
 //
 // Rules:
 //   * one queue entry per player; joining with a new difficulty moves the entry (the wait restarts);
@@ -144,8 +144,9 @@ export class Matchmaker {
   }
 
   /**
-   * Seat the team in a fresh co-op room (bots fill the empty seats), mark everyone ready and start
-   * the match at once. A failure re-queues the humans with their original wait instead of throwing.
+   * Seat the team in a fresh co-op room and hand it to the players: the host (the first queued)
+   * adds AI teammates and starts the match from the room lobby like any other room.
+   * A failure re-queues the humans with their original wait instead of throwing.
    * @param {{ playerId: string, difficulty: string, joinedAt: number }[]} team
    */
   _formTeam(team) {
@@ -170,14 +171,7 @@ export class Matchmaker {
         const jr = lobby.join(m.session, { code: room.code });
         if (jr && jr.error) lobby.log.warn(`[matchmaking] ${room.code} join failed for ${m.session.name}: ${jr.error}`);
       }
-      let guard = 0;
-      while (room.freeSeat() >= 0 && guard++ < 8) {
-        const br = lobby.addBot(host.session);
-        if (br && br.error) break;
-      }
-      for (const s of room.seats) if (s && !s.isBot) s.ready = true;
-      const sr = lobby.startMatch(room, host.session.limitKey || null);
-      if (sr && sr.error) throw new Error(`start: ${sr.error}`);
+      // no bots, no auto-start: the host prepares the room (AI teammates, loadout) and starts it
     } catch (e) {
       lobby.log.error(`[matchmaking] forming a ${difficulty} team failed:`, e && e.message ? e.message : e);
       if (room) for (const m of members) lobby.removeMember(room, m.entry.playerId);

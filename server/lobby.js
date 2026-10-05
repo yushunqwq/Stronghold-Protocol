@@ -350,6 +350,7 @@ export class Lobby {
   create(session, { mode, difficulty }) {
     const cur = this.roomOf(session);
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
+    this.matchmaker.leave(session.playerId); // a new room cancels matchmaking (idempotent)
     if (this.rooms.size >= this.opts.maxRooms) return fail(ERR.INTERNAL, 'too many rooms');
     const key = session.limitKey || null;
     if (key && this.opts.maxRoomsPerAddr > 0) {
@@ -384,6 +385,7 @@ export class Lobby {
     // idempotent for members; a spectator of this room goes on below: it may take a free player seat (header)
     if (cur === room && !room.spectatorOf(session.playerId)) { this.sendState(room, session); return OK; }
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
+    this.matchmaker.leave(session.playerId); // joining a room cancels matchmaking (idempotent)
     if (room.match) return fail(ERR.ROOM_STARTED);
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     const idx = room.freeSeat();
@@ -420,6 +422,7 @@ export class Lobby {
       return OK;
     }
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
+    this.matchmaker.leave(session.playerId); // spectating cancels matchmaking (idempotent)
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     if (room.spectators.length >= MAX_SPECTATORS) return fail(ERR.ROOM_FULL, 'no free spectator seat');
     if (cur) this.removeMember(cur, session.playerId);

@@ -252,7 +252,7 @@ function wireNet() {
   });
   net.on('matchmaking.found', () => {
     store.set({ matchmaking: null });
-    toast('匹配成功！正在进入对局…', 'success');
+    toast('匹配成功！正在进入房间…', 'success');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.

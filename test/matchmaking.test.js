@@ -40,7 +40,7 @@ async function mmJoin(c, difficulty = 'NORMAL') {
 }
 
 describe('matchmaking queue', () => {
-  test('four players queue → a room is formed and its match starts', async () => {
+  test('four players queue → they land in a room lobby (no auto-start, no auto bots)', async () => {
     const ps = await Promise.all(['m1', 'm2', 'm3', 'm4'].map(player));
     try {
       for (const c of ps) await mmJoin(c);
@@ -49,28 +49,46 @@ describe('matchmaking queue', () => {
       const codes = new Set(founds.map((f) => f.code));
       assert.equal(codes.size, 1, 'one room for the whole team');
       const code = founds[0].code;
-      // every player was seated and the match started: room.state (inMatch) + m.public follow
+      // everyone was seated in the room lobby: no match yet, no bots, nobody forced ready
       for (const c of ps) {
-        const st = await c.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
-        const humans = st.seats.filter((s) => s && !s.isBot);
-        assert.equal(humans.length, 4);
-        assert.ok(humans.every((s) => s.ready), 'everyone is ready');
+        const st = await c.waitFor('room.state', (s) => s.code === code && s.seats.filter((x) => x && !x.isBot).length === 4, 3000);
+        assert.equal(st.inMatch, false, 'the match does not start by itself');
+        assert.equal(st.seats.filter((s) => s && s.isBot).length, 0, 'no auto-added bots');
+        assert.ok(st.seats.every((s) => !s || s.isBot || s.ready === false), 'nobody is forced ready');
       }
+      // the first queued player hosts: everyone readies up and the host starts like any other room
+      const host = ps[0];
+      const lobby = await host.waitFor('room.state', (s) => s.code === code, 2000);
+      assert.equal(lobby.hostId, host.id, 'the first queued player hosts');
+      for (const c of ps) {
+        const r = await c.request({ t: 'room.ready', ready: true });
+        assert.equal(r.t, 'ok');
+      }
+      const rs = await host.request({ t: 'room.start' });
+      assert.equal(rs.t, 'ok', JSON.stringify(rs));
+      const started = await host.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
+      assert.equal(started.seats.filter((s) => s && !s.isBot).length, 4);
     } finally { await closeAll(); }
   });
 
-  test('a lone player is matched with bots after the queue timeout', async () => {
+  test('a lone player is seated after the queue timeout and adds bots by hand', async () => {
     const c = await player('solo-q');
     try {
       await mmJoin(c, 'FUNNY');
       await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
       srv.lobby.matchmaker.tick();
       const found = await c.waitFor('matchmaking.found', undefined, 3000);
-      const st = await c.waitFor('room.state', (s) => s.code === found.code && s.inMatch === true, 3000);
+      const st = await c.waitFor('room.state', (s) => s.code === found.code && s.inMatch === false, 3000);
       const humans = st.seats.filter((s) => s && !s.isBot);
       const bots = st.seats.filter((s) => s && s.isBot);
       assert.equal(humans.length, 1);
-      assert.equal(bots.length, 3, 'empty seats filled with AI teammates');
+      assert.equal(bots.length, 0, 'bots are added by the host, not the matchmaker');
+      assert.equal(st.hostId, c.id);
+      // the host fills the room with AI teammates before starting
+      const r = await c.request({ t: 'room.addBot' });
+      assert.equal(r.t, 'ok');
+      const withBot = await c.waitFor('room.state', (s) => s.seats.filter((x) => x && x.isBot).length === 1, 2000);
+      assert.equal(withBot.seats.filter((s) => s && !s.isBot).length, 1);
     } finally { await closeAll(); }
   });
 
@@ -116,6 +134,22 @@ describe('matchmaking queue', () => {
       const code = st.code;
       await mmJoin(c);
       assert.equal(srv.lobby.getRoom(code), null, 'the old room was disposed');
+    } finally { await closeAll(); }
+  });
+
+  test('creating or joining a room cancels matchmaking', async () => {
+    const c = await player('fickle');
+    try {
+      await mmJoin(c);
+      assert.equal(srv.lobby.matchmaker.queued(c.id), true);
+      const r = await c.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' });
+      assert.equal(r.t, 'ok');
+      await c.waitFor('room.state', (s) => s.hostId === c.id);
+      assert.equal(srv.lobby.matchmaker.queued(c.id), false, 'room.create drops the queue entry');
+      // and re-queueing works after leaving the room
+      await c.request({ t: 'room.leave' });
+      await mmJoin(c);
+      assert.equal(srv.lobby.matchmaker.queued(c.id), true);
     } finally { await closeAll(); }
   });
 

@@ -75,11 +75,16 @@ const MODE_CARDS = [
     desc: `与至多 ${MAX_SEATS - 1} 名博士组成同盟，共享干员池，联防协作抵御敌潮。`,
     points: [`1–${MAX_SEATS} 名博士 · 可由 AI 队友补位`, '联防阶段 · 最终攻势合并生命值'],
   },
+  {
+    id: 'quick', name: '快速匹配', en: 'QUICK MATCH', icon: 'signal',
+    desc: '与在线的其他博士自动组队，按当前难度匹配，凑齐后进入房间准备。',
+    points: [`按难度匹配 · 凑齐 ${MAX_SEATS} 人开局`, '进房后可先添加 AI 队友'],
+  },
 ];
 
 /**
  * Text for a difficulty card, preferring data/config.json.
- * @param {'solo'|'coop'} roomMode
+ * @param {'solo'|'coop'|'quick'} roomMode
  * @param {string} difficulty
  * @returns {{ code: string, desc: string, effects: string[], rounds: number, hidden: boolean, stageNote: string }}
  */
@@ -232,7 +237,10 @@ export function LobbyScreen() {
   const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   useData('config');
-  const [roomMode, setRoomMode] = useState(() => (loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop'));
+  const [roomMode, setRoomMode] = useState(() => {
+    const m = loadPref('lobby.mode', 'coop');
+    return m === 'solo' || m === 'quick' ? m : 'coop';
+  });
   const [difficulty, setDifficulty] = useState(() => {
     const d = loadPref('lobby.difficulty', 'FUNNY');
     return DIFFICULTIES.includes(d) ? d : 'FUNNY';
@@ -260,7 +268,9 @@ export function LobbyScreen() {
       if (alive.current) setBusy(null);
     }
   };
-  const create = () => run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
+  const create = () => isQuick
+    ? joinQueue()
+    : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
   const join = (c = code) => {
     // `onClick=${join}` hands the click EVENT as the first argument, and a default parameter only applies to
     // `undefined` — codeArg keeps an event target out of the key and falls back to the input field
@@ -291,11 +301,12 @@ export function LobbyScreen() {
     identity.setEntered(false);
     store.set((s) => ({ session: { ...s.session, entered: false } }));
   };
-  // quick match (server/matchmaking.js): queue by the selected difficulty; the server forms the room
-  // and starts the match, the client just follows matchmaking.state / matchmaking.found
+  // quick match (server/matchmaking.js): queue by the selected difficulty; when the team is seated
+  // the room lobby opens, where the host adds AI teammates and starts the match (room.start)
   const mm = useStore((s) => s.matchmaking);
-  const startMatch = () => run('mm', () => net.request('matchmaking.join', { difficulty }));
-  const cancelMatch = () => run('mm', () => net.request('matchmaking.leave', {}));
+  const isQuick = roomMode === 'quick';
+  const joinQueue = () => run('mm', () => net.request('matchmaking.join', { difficulty }));
+  const leaveQueue = () => run('mm', () => net.request('matchmaking.leave', {}));
 
   return html`<div class="screen lobby-screen">
     <header class="topbar">
@@ -327,21 +338,6 @@ export function LobbyScreen() {
           ${MODE_CARDS.map((c) => html`<${ModeCard} key=${c.id} card=${c} selected=${roomMode === c.id} onSelect=${pickMode} />`)}
         </div>
 
-        <div class="section-label"><span class="section-label__idx num">04</span>快速匹配<${MicroLabel}>QUICK MATCH<//></div>
-        <${Panel} class="mm-panel" tone="mint">
-          ${mm && mm.inQueue ? html`<div class="mm-queue">
-            <${Spinner} size="sm" label="MATCHING" />
-            <div class="mm-queue__text">
-              <b>正在匹配队友…</b>
-              <span class="t-dim">同难度队列 ${mm.waiting} 人 · 凑齐 4 人或等待超时后开局（空位由 AI 补齐）</span>
-            </div>
-            <${Button} variant="secondary" size="lg" loading=${busy === 'mm'} onClick=${cancelMatch}>取消匹配<//>
-          </div>` : html`<div class="mm-idle">
-            <div class="mm-idle__text">与在线的其他博士自动组队<span class="t-dim">按当前难度匹配 · 凑齐 4 人直接开局</span></div>
-            <${Button} variant="primary" size="lg" icon="users" loading=${busy === 'mm'} disabled=${!online} onClick=${startMatch}>开始匹配<//>
-          </div>`}
-        <//>
-
         <div class="section-label"><span class="section-label__idx num">03</span>加入同盟<${MicroLabel}>JOIN WITH ALLIANCE KEY<//></div>
         <${Panel} class="join-panel" tone="amber">
           <div class="join-row">
@@ -368,16 +364,23 @@ export function LobbyScreen() {
           ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} />`)}
         </div>
         <div class="create-box">
+          ${mm && mm.inQueue ? html`<${Panel} class="mm-queuebox" tone="mint">
+            <div class="mm-queuebox__row">
+              <${Spinner} size="sm" label="MATCHING" />
+              <div class="mm-queuebox__text">正在匹配队友…<span class="t-dim">同难度队列 ${mm.waiting} 人 · 匹配成功后进入房间，可先添加 AI 队友</span></div>
+              <${Button} variant="secondary" size="lg" loading=${busy === 'mm'} onClick=${leaveQueue}>取消匹配<//>
+            </div>
+          <//>` : html`
           <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? '开始独立模拟' : '创建同盟'}
+            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === (isQuick ? 'mm' : 'create')} disabled=${!online} onClick=${create}>
+              ${roomMode === 'solo' ? '开始独立模拟' : isQuick ? '开始匹配' : '创建同盟'}
             <//>
           <//>
           <div class="create-box__hint">
             ${online
-              ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : '创建后可邀请好友或添加 AI 队友'}</span>`
+              ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '按当前难度匹配，凑齐后进入房间准备' : '创建后可邀请好友或添加 AI 队友'}</span>`
               : html`<${Spinner} size="sm" label="CONNECTING" />`}
-          </div>
+          </div>`}
         </div>
       </section>
     </div>
