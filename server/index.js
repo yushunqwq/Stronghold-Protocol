@@ -633,7 +633,7 @@ export async function startServer(opts = {}) {
   for (const k of ['lobbyGraceMs', 'maxRooms', 'maxRoomsPerAddr', 'maxMatchesPerAddr', 'resyncMinGapMs', 'soloReconnectWindowMs']) {
     if (opts[k] != null) lobbyOptions[k] = opts[k];
   }
-  // quick-match queue tunables (server/matchmaking.js MATCHMAKING_DEFAULTS): { teamSize, queueTimeoutMs, tickMs, maxQueue }
+  // alliance-match queue tunables (server/matchmaking.js MATCHMAKING_DEFAULTS): { teamSize, tickMs, maxQueue }
   if (opts.matchmaking != null) lobbyOptions.matchmaking = opts.matchmaking;
   const lobby = new Lobby({ registry, log, MatchClass: opts.MatchClass, getData: () => data, seedFn: opts.seedFn, options: lobbyOptions });
   const network = new Network({ registry, handler: lobby, log, options: netOptions });

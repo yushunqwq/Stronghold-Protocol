@@ -235,7 +235,7 @@ function wireNet() {
     store.set((s) => ({ emotes: [...s.emotes.slice(-(EMOTE_KEEP - 1)), { seq: ++seq, playerId: msg.playerId, id: msg.id, at: Date.now() }] }));
   });
 
-  // quick match (server/matchmaking.js): queue state follows the server; on `found` the room.state
+  // alliance match (server/matchmaking.js): queue state follows the server; on `found` the room.state
   // broadcast (the room was formed and its match started) routes to the game screen on its own
   net.on('matchmaking.state', (msg) => {
     store.set({
@@ -246,7 +246,7 @@ function wireNet() {
   });
   net.on('matchmaking.found', () => {
     store.set({ matchmaking: null });
-    toast('匹配成功！正在进入房间…', 'success');
+    toast('匹配成功！正在开始模拟…', 'success');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.
