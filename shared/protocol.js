@@ -262,9 +262,11 @@ export const C2S = {
   // quick match (快速匹配, server/matchmaking.js): queue by difficulty; the server seats each team in
   // a fresh co-op room, whose host then adds AI teammates and starts the match from the room lobby.
   // `matchmaking.state { inQueue, waiting?, difficulty? }` follows the queue; `matchmaking.found { code }`
-  // fires for every seated player (room.state follows).
+  // fires for every seated player (room.state follows). `matchmaking.seek { on }` (host only) opens a
+  // room's empty seats to the queue; the tick fills them, oldest room first.
   'matchmaking.join': { difficulty: (v) => DIFFICULTIES.includes(v) },
   'matchmaking.leave': {},
+  'matchmaking.seek': { on: isBool },
 
   // match
   'g.infoReady': {},
