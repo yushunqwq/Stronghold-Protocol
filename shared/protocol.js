@@ -271,6 +271,8 @@ export const C2S = {
   // With 2+ queued, startNow opens a majority vote (initiator auto-agrees); matchmaking.vote casts a ballot.
   'matchmaking.startNow': { withBots: (v) => typeof v === 'boolean' },
   'matchmaking.vote': { agree: (v) => typeof v === 'boolean' },
+  // only the vote initiator can cancel it
+  'matchmaking.voteCancel': {},
 
   // match
   'g.infoReady': {},

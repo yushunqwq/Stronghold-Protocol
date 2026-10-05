@@ -392,6 +392,7 @@ export class Matchmaker {
       sendSession(s, {
         t: 'matchmaking.voteState',
         withBots: vote.withBots,
+        initiator: vote.initiator,
         initiatorName: initiator ? initiator.name : '博士',
         agree, disagree: vote.votes.size - agree, total, needed,
         voted, // playerIds that already voted
@@ -400,11 +401,27 @@ export class Matchmaker {
   }
 
   /** Tell every voter the vote is over (passed → the match starts; failed → back to waiting). */
-  _broadcastVoteEnd(vote, passed) {
+  _broadcastVoteEnd(vote, passed, cancelled = false) {
     for (const pid of vote.memberIds) {
       const s = this.lobby.registry.byId(pid);
-      if (s && s.connected) sendSession(s, { t: 'matchmaking.voteEnd', passed });
+      if (s && s.connected) sendSession(s, { t: 'matchmaking.voteEnd', passed, cancelled });
     }
+  }
+
+  /**
+   * `matchmaking.voteCancel` — the initiator cancels their vote; everyone goes back to waiting.
+   * @param {import('./net.js').Session} session
+   */
+  cancelVote(session) {
+    const pid = session.playerId;
+    for (const [diff, vote] of this.votes) {
+      if (vote.initiator !== pid) continue;
+      this.votes.delete(diff);
+      this._broadcastVoteEnd(vote, false, true);
+      this.lobby.log.info(`[matchmaking] ${diff} startNow vote cancelled by ${session.name}`);
+      return OK;
+    }
+    return fail(ERR.BAD_MSG, 'no vote to cancel');
   }
 
   _groupSize(difficulty) {
