@@ -325,15 +325,6 @@ Other renderer rules from research 07 §5.4–5.5:
 - **Missing unit SFX:** use `audio.sfx.battle.enemyHit` or a WebAudio blip (research 07 §6.4).
 - **Bond icons:** if the real glyph ever fails, the stored file is the nation camp logo.
 
-### Resource preloading
-
-The client preloads in two tiers (`public/js/preload.js`, pure collectors + a runner; `test/preload.test.js`):
-
-- **Lobby tier** — silent, once the player has entered, in idle time: the title / lobby / room art, the profession icons, the UI SFX and the lobby BGM (`collectLobbyPlan`).
-- **Match tier** — when the match's public state first arrives early enough (`INFO_CHECK` … `PREP`): the boss + the 特训敌人 faction-pool enemy icons and Spine models, this match's bond / band icons, the player's own loadout operators (art + Spine), the combat BGM and the battle SFX (`collectMatchPlan`). A small floating progress card (`ui/preloadOverlay.js`) reports the progress without blocking the screen, and 跳过 aborts the run — preloading is an optimization, never a gate.
-
-The match's Spine models stay **held** (refcounted) until the first battle — its views take their own refs then — or the match ends, so the idle memory budget never evicts them during the briefing / draft minutes before the fight; images and audio stay in their own caches. The runner never rejects: every failure is counted (`{ ok, failed, total, cancelled }`) and reported through `onProgress(done, total, label)`.
-
 ## Verification
 
 `node --test test/assets.test.js` covers the pure helpers: the resolver, the atlas normalizer, the format sniffers, WOFF2, audio banks, the plan id sets, the downloader against a fake network, and the self-heal of corrupt skeletons.
