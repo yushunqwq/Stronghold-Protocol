@@ -296,6 +296,7 @@ export class Lobby {
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
       case 'matchmaking.join': return this.matchmaker.join(session, msg);
       case 'matchmaking.leave': this.matchmaker.leave(session.playerId); return OK;
+      case 'matchmaking.startNow': return this.matchmaker.startNow(session, msg);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
@@ -481,20 +482,26 @@ export class Lobby {
     return OK;
   }
 
+  /** Add an AI teammate to a room's free seat (no session/host checks — for matchmaking). @returns {boolean} added */
+  addBotDirect(room) {
+    if (room.mode === 'solo') return false;
+    const idx = room.freeSeat();
+    if (idx < 0) return false;
+    const used = new Set(room.seats.filter((s) => s && s.isBot).map((s) => s.name));
+    const name = BOT_NAMES.find((n) => !used.has(n)) || `AI·${idx + 1}`;
+    let playerId;
+    do playerId = 'ai_' + randomBytes(4).toString('hex'); while (room.seatOf(playerId));
+    room.seats[idx] = { seat: idx, playerId, name, isBot: true, ready: true, connected: true, left: false };
+    return true;
+  }
+
   addBot(session) {
     const room = this.roomOf(session);
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
     if (room.match) return fail(ERR.ROOM_STARTED);
     this.dropReplay(room, session.playerId);
-    if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo rooms cannot have AI teammates');
-    const idx = room.freeSeat();
-    if (idx < 0) return fail(ERR.ROOM_FULL);
-    const used = new Set(room.seats.filter((s) => s && s.isBot).map((s) => s.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) || `AI·${idx + 1}`;
-    let playerId;
-    do playerId = 'ai_' + randomBytes(4).toString('hex'); while (room.seatOf(playerId));
-    room.seats[idx] = { seat: idx, playerId, name, isBot: true, ready: true, connected: true, left: false };
+    if (!this.addBotDirect(room)) return fail(ERR.ROOM_FULL, room.mode === 'solo' ? 'solo rooms cannot have AI teammates' : undefined);
     this.broadcastState(room);
     return OK;
   }

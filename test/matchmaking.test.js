@@ -162,12 +162,72 @@ describe('matchmaking queue', () => {
       for (const c of ps) assert.equal(srv.lobby.matchmaker.queued(c.id), true);
     } finally { await closeAll(); }
   });
+
+  test('startNow with bots: the group starts together, AI fills the seats', async () => {
+    const [a, b] = await Promise.all([player('impatient'), player('patient2')]);
+    try {
+      await mmJoin(a, 'NORMAL');
+      await mmJoin(b, 'NORMAL');
+      srv.lobby.matchmaker.tick();
+      // only 2 queued: no team forms yet
+      await a.expectNone('matchmaking.found', () => true, 200);
+      // the group skips the wait: AI teammates fill the empty seats, the match starts at once
+      const r = await a.request({ t: 'matchmaking.startNow', withBots: true });
+      assert.equal(r.t, 'ok', JSON.stringify(r));
+      // both queued players land in the SAME room and the match starts
+      const founds = await Promise.all([a, b].map((c) => c.waitFor('matchmaking.found', undefined, 3000)));
+      const codes = new Set(founds.map((f) => f.code));
+      assert.equal(codes.size, 1, 'same room for the whole group');
+      const code = founds[0].code;
+      for (const c of [a, b]) {
+        const st = await c.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
+        assert.equal(st.seats.filter((s) => s && !s.isBot).length, 2, 'both humans');
+        assert.equal(st.seats.filter((s) => s && s.isBot).length, 2, 'AI fills the rest');
+      }
+      assert.equal(srv.lobby.matchmaker.queued(a.id), false, 'no longer queued');
+      assert.equal(srv.lobby.matchmaker.queued(b.id), false, 'no longer queued');
+    } finally { await closeAll(); }
+  });
+
+  test('startNow without bots: the group plays short-handed', async () => {
+    const [a, b, c] = await Promise.all([player('s1'), player('s2'), player('s3')]);
+    try {
+      await mmJoin(a, 'HARD');
+      await mmJoin(b, 'HARD');
+      await mmJoin(c, 'HARD');
+      srv.lobby.matchmaker.tick();
+      await a.expectNone('matchmaking.found', () => true, 200);
+      const r = await b.request({ t: 'matchmaking.startNow', withBots: false });
+      assert.equal(r.t, 'ok', JSON.stringify(r));
+      const founds = await Promise.all([a, b, c].map((p) => p.waitFor('matchmaking.found', undefined, 3000)));
+      const codes = new Set(founds.map((f) => f.code));
+      assert.equal(codes.size, 1, 'same room for the whole group');
+      const code = founds[0].code;
+      for (const p of [a, b, c]) {
+        const st = await p.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
+        assert.equal(st.seats.filter((s) => s && !s.isBot).length, 3, 'three humans');
+        assert.equal(st.seats.filter((s) => s && s.isBot).length, 0, 'no AI');
+      }
+    } finally { await closeAll(); }
+  });
+
+  test('startNow without queueing fails', async () => {
+    const c = await player('loner');
+    try {
+      const bad = await c.request({ t: 'matchmaking.startNow' });
+      assert.equal(bad.t, 'error');
+    } finally { await closeAll(); }
+  });
 });
 
 describe('matchmaking protocol', () => {
   test('validateC2S accepts the new messages, rejects bad fields', () => {
     assert.equal(validateC2S({ t: 'matchmaking.join', difficulty: 'NORMAL' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.startNow', withBots: true }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.startNow', withBots: false }), null);
+    assert.ok(validateC2S({ t: 'matchmaking.startNow' }).startsWith('bad field'));
+    assert.ok(validateC2S({ t: 'matchmaking.startNow', withBots: 'yes' }).startsWith('bad field'));
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }), null);
     // unknown fields are ignored, not rejected
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
