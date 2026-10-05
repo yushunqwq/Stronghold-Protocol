@@ -85,6 +85,8 @@ export const initialState = Object.freeze({
   ui: { pendingJoin: null, restoring: false, buildStale: false },
   // alliance match (server/matchmaking.js): null when not queued, else { inQueue, waiting, difficulty }
   matchmaking: null,
+  // startNow vote: null when no vote, else { withBots, initiatorName, agree, disagree, total, needed, voted }
+  matchVote: null,
 });
 
 /** The app-wide store singleton. */

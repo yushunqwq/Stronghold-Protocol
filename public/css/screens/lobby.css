@@ -242,6 +242,10 @@
 .match-start-row { display: flex; gap: .12rem; }
 .match-start-row .tt-anchor { flex: 1; min-width: 0; }
 .match-start-row .btn { letter-spacing: .12em; }
+/* startNow vote */
+.vote-box { display: flex; flex-direction: column; gap: .12rem; padding: .16rem; border: 1px solid var(--line-amber); border-radius: .08rem; background: rgba(0,0,0,.3); }
+.vote-box__title { display: flex; align-items: center; gap: .08rem; font-size: .2rem; color: var(--text-hi); }
+.vote-box__progress { display: flex; align-items: center; justify-content: center; gap: .04rem; font-size: .16rem; }
 
 /* ---- quick match (快速匹配, js/screens/lobby.js) ------------------------------------------------------- */
 .mm-queuebox .panel__body { padding: .22rem .26rem; }
