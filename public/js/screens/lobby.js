@@ -77,8 +77,8 @@ const MODE_CARDS = [
   },
   {
     id: 'quick', name: '快速匹配', en: 'QUICK MATCH', icon: 'signal',
-    desc: '与在线的其他博士自动组队，按当前难度匹配，凑齐后进入房间准备。',
-    points: [`按难度匹配 · 凑齐 ${MAX_SEATS} 人开局`, '进房后可先添加 AI 队友'],
+    desc: '直接创建同盟房间：进房先加 AI 队友，再开始匹配真人博士。',
+    points: ['按当前难度匹配空位', '进房后可先添加 AI 队友'],
   },
 ];
 
@@ -269,7 +269,7 @@ export function LobbyScreen() {
     }
   };
   const create = () => isQuick
-    ? joinQueue()
+    ? run('create', () => net.request('room.create', { mode: 'coop', difficulty, quickMatch: true }))
     : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
   const join = (c = code) => {
     // `onClick=${join}` hands the click EVENT as the first argument, and a default parameter only applies to
@@ -301,12 +301,9 @@ export function LobbyScreen() {
     identity.setEntered(false);
     store.set((s) => ({ session: { ...s.session, entered: false } }));
   };
-  // quick match (server/matchmaking.js): queue by the selected difficulty; when the team is seated
-  // the room lobby opens, where the host adds AI teammates and starts the match (room.start)
-  const mm = useStore((s) => s.matchmaking);
+  // quick match (server/lobby.js): the 快速匹配 card creates a co-op room immediately
+  // (quickMatch: true); the host adds AI teammates, then opens the empty seats with 开始匹配.
   const isQuick = roomMode === 'quick';
-  const joinQueue = () => run('mm', () => net.request('matchmaking.join', { difficulty }));
-  const leaveQueue = () => run('mm', () => net.request('matchmaking.leave', {}));
 
   return html`<div class="screen lobby-screen">
     <header class="topbar">
@@ -364,23 +361,16 @@ export function LobbyScreen() {
           ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} />`)}
         </div>
         <div class="create-box">
-          ${mm && mm.inQueue ? html`<${Panel} class="mm-queuebox" tone="mint">
-            <div class="mm-queuebox__row">
-              <${Spinner} size="sm" label="MATCHING" />
-              <div class="mm-queuebox__text">正在匹配队友…<span class="t-dim">同难度队列 ${mm.waiting} 人 · 匹配成功后进入房间，可先添加 AI 队友</span></div>
-              <${Button} variant="secondary" size="lg" loading=${busy === 'mm'} onClick=${leaveQueue}>取消匹配<//>
-            </div>
-          <//>` : html`
           <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === (isQuick ? 'mm' : 'create')} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? '开始独立模拟' : isQuick ? '开始匹配' : '创建同盟'}
+            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
+              ${roomMode === 'solo' ? '开始独立模拟' : '创建同盟'}
             <//>
           <//>
           <div class="create-box__hint">
             ${online
-              ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '按当前难度匹配，凑齐后进入房间准备' : '创建后可邀请好友或添加 AI 队友'}</span>`
+              ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '创建房间后可先添加 AI 队友，再开始匹配真人队友' : '创建后可邀请好友或添加 AI 队友'}</span>`
               : html`<${Spinner} size="sm" label="CONNECTING" />`}
-          </div>`}
+          </div>
         </div>
       </section>
     </div>

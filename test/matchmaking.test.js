@@ -1,6 +1,7 @@
-// test/matchmaking.test.js — quick-match queue (server/matchmaking.js): queueing by difficulty,
-// team formation (full team, timeout with bots), leaving, and the guards. Boots real servers
-// in-process with the matchmaker timer disabled (tickMs: 0) and drives tick() by hand.
+// test/matchmaking.test.js — quick match (server/lobby.js + server/matchmaking.js): the legacy queue
+// (queueing by difficulty, team formation, leaving, guards), the quick-match `room.create` flow
+// (immediate room, auto-join of seeking rooms), and seeking. Boots real servers in-process with the
+// matchmaker timer disabled (tickMs: 0) and drives tick() by hand.
 
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -248,11 +249,81 @@ describe('matchmaking queue', () => {
   });
 });
 
+describe('quick-match create', () => {
+  test('room.create with quickMatch opens a room immediately (no queue)', async () => {
+    const c = await player('qm1');
+    try {
+      const r = await c.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true });
+      assert.equal(r.t, 'ok', JSON.stringify(r));
+      const st = await c.waitFor('room.state', (s) => s.quickMatch === true, 3000);
+      assert.equal(st.seeking, false);
+      assert.equal(st.seats.filter((s) => s && !s.isBot).length, 1, 'host sits alone');
+      assert.equal(srv.lobby.matchmaker.queued(c.id), false, 'never queued');
+    } finally { await closeAll(); }
+  });
+
+  test('quick-match create joins a seeking room of the same difficulty', async () => {
+    const host = await player('qmhost');
+    const guest = await player('qmguest');
+    try {
+      assert.equal((await host.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
+      const hs = await host.waitFor('room.state', (s) => s.quickMatch === true, 3000);
+      const code = hs.code;
+      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
+      // the newcomer lands in the seeking room instead of opening a new one
+      assert.equal((await guest.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
+      const found = await guest.waitFor('matchmaking.found', undefined, 3000);
+      assert.equal(found.code, code, 'seated in the seeking room');
+      const gs = await guest.waitFor('room.state',
+        (s) => s.code === code && s.seats.some((x) => x && x.playerId === guest.id), 3000);
+      assert.equal(gs.quickMatch, true);
+    } finally { await closeAll(); }
+  });
+
+  test('no auto-join when not seeking, difficulty differs, or alliance create', async () => {
+    const host = await player('qmhost2');
+    try {
+      assert.equal((await host.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
+      const hs = await host.waitFor('room.state', (s) => s.quickMatch === true, 3000);
+      // not seeking yet: a newcomer opens their own room
+      const other = await player('qmother');
+      try {
+        assert.equal((await other.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
+        const os = await other.waitFor('room.state', (s) => s.quickMatch === true, 3000);
+        assert.notEqual(os.code, hs.code, 'a non-seeking room is not joined');
+      } finally { clients.delete(other); await other.terminate().catch(() => {}); }
+      // seeking, but an alliance create never auto-joins a quick-match room
+      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === hs.code && s.seeking === true, 2000);
+      const ally = await player('ally');
+      try {
+        assert.equal((await ally.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' })).t, 'ok');
+        const as = await ally.waitFor('room.state',
+          (s) => s.quickMatch !== true && s.seats.some((x) => x && x.playerId === ally.id), 3000);
+        assert.notEqual(as.code, hs.code, 'alliance create ignores seeking quick-match rooms');
+        assert.equal(as.quickMatch, false);
+      } finally { clients.delete(ally); await ally.terminate().catch(() => {}); }
+      // seeking, but a different difficulty opens a new room
+      const diff = await player('qmdiff');
+      try {
+        assert.equal((await diff.request({ t: 'room.create', mode: 'coop', difficulty: 'HARD', quickMatch: true })).t, 'ok');
+        const ds = await diff.waitFor('room.state',
+          (s) => s.quickMatch === true && s.difficulty === 'HARD' && s.seats.some((x) => x && x.playerId === diff.id), 3000);
+        assert.notEqual(ds.code, hs.code, 'difficulty mismatch opens a new room');
+      } finally { clients.delete(diff); await diff.terminate().catch(() => {}); }
+    } finally { await closeAll(); }
+  });
+});
+
 describe('matchmaking protocol', () => {
   test('validateC2S accepts the new messages, rejects bad fields', () => {
     assert.equal(validateC2S({ t: 'matchmaking.join', difficulty: 'NORMAL' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.seek', on: true }), null);
+    assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
+    assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }), null);
+    assert.ok(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: 'yes' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.join', difficulty: 'NOPE' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.join' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.seek', on: 'yes' }).startsWith('bad field'));

@@ -240,7 +240,7 @@ export const C2S = {
   // session & lobby
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6), $optional: ['token', 'version'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
-  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
+  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), quickMatch: isBool, $optional: ['quickMatch'] },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.leave': {},
   'room.ready': { ready: isBool },
@@ -259,11 +259,15 @@ export const C2S = {
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
 
-  // quick match (快速匹配, server/matchmaking.js): queue by difficulty; the server seats each team in
-  // a fresh co-op room, whose host then adds AI teammates and starts the match from the room lobby.
-  // `matchmaking.state { inQueue, waiting?, difficulty? }` follows the queue; `matchmaking.found { code }`
-  // fires for every seated player (room.state follows). `matchmaking.seek { on }` (host only) opens a
-  // room's empty seats to the queue; the tick fills them, oldest room first.
+  // quick match (快速匹配, server/lobby.js + server/matchmaking.js): the 快速匹配 card creates a
+  // co-op room immediately (`room.create` with quickMatch: true) — no queue wait. If a seeking
+  // quick-match room (host opened it with `matchmaking.seek { on }`) has a free seat at the same
+  // difficulty, the newcomer is seated there directly; otherwise they open a fresh room as host.
+  // The host adds AI teammates first, then `matchmaking.seek { on }` opens the empty seats;
+  // the match itself is always started by hand (`room.start`).
+  // `matchmaking.state { inQueue, waiting?, difficulty? }` follows the legacy queue;
+  // `matchmaking.found { code }` fires when a player is seated (room.state follows).
+  // `matchmaking.seek { on }` (host only) opens a room's empty seats to quick-match newcomers.
   'matchmaking.join': { difficulty: (v) => DIFFICULTIES.includes(v) },
   'matchmaking.leave': {},
   'matchmaking.seek': { on: isBool },

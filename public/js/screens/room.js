@@ -215,8 +215,8 @@ export function RoomScreen() {
 
   const toggleReady = () => run('ready', () => net.request('room.ready', { ready: !myReady }));
   const start = () => run('start', () => net.request('room.start', {}));
-  // quick-match rooms (server/matchmaking.js): the lobby button reads 开始匹配. With empty seats it opens
-  // them to the queue (matchmaking.seek); with none left it just starts the match like 开始模拟.
+  // quick-match rooms: the lobby button reads 开始匹配. With empty seats it opens them to
+  // quick-match newcomers (matchmaking.seek); with none left it just starts the match like 开始模拟.
   const quickMatch = !!room.quickMatch;
   const seeking = !!room.seeking;
   const emptySeats = facts.seats.filter((s) => !s).length;
@@ -336,7 +336,7 @@ export function RoomScreen() {
                 <${Button} variant="secondary" size="lg" loading=${busy === 'seek'} disabled=${!online} onClick=${cancelSeek}>取消匹配<//>
               </div>`
             : quickMatch
-              ? html`<${Tooltip} text=${emptySeats > 0 ? '从排队中匹配博士填补空位；无空位时直接开始' : null}>
+              ? html`<${Tooltip} text=${emptySeats > 0 ? '将空位开放给快速匹配的博士；无空位时直接开始' : null}>
                   <${Button} variant="primary" size="xl" icon="play" loading=${busy === 'seek' || busy === 'start'} disabled=${!online} onClick=${startMatch}>开始匹配<//>
                 <//>`
               : html`<${Tooltip} text=${facts.canStart ? null : '仍有博士未准备就绪'}>
