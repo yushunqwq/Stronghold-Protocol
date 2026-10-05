@@ -198,8 +198,8 @@ function wireNet() {
       },
     });
     // the server drops the queue entry on disconnect: the client must not show a stale queue
-    if (snap.status !== 'online' && store.get().matchmaking) {
-      store.set({ matchmaking: null });
+    if (snap.status !== 'online' && (store.get().matchmaking || store.get().matchVote)) {
+      store.set({ matchmaking: null, matchVote: null });
       toast('连接已断开，匹配已取消', 'warn');
     }
   });
@@ -245,8 +245,26 @@ function wireNet() {
     });
   });
   net.on('matchmaking.found', () => {
-    store.set({ matchmaking: null });
+    store.set({ matchmaking: null, matchVote: null });
     toast('匹配成功！正在开始模拟…', 'success');
+  });
+  // startNow vote: show the ballot; on close, toast the result (the match starts via found)
+  net.on('matchmaking.voteState', (msg) => {
+    store.set({
+      matchVote: {
+        withBots: !!msg.withBots,
+        initiatorName: typeof msg.initiatorName === 'string' ? msg.initiatorName : '博士',
+        agree: Math.max(0, msg.agree | 0),
+        disagree: Math.max(0, msg.disagree | 0),
+        total: Math.max(0, msg.total | 0),
+        needed: Math.max(0, msg.needed | 0),
+        voted: Array.isArray(msg.voted) ? msg.voted.filter((id) => typeof id === 'string') : [],
+      },
+    });
+  });
+  net.on('matchmaking.voteEnd', (msg) => {
+    store.set({ matchVote: null });
+    if (!msg || !msg.passed) toast('投票未通过，继续等待匹配', 'warn');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.

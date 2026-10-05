@@ -163,18 +163,22 @@ describe('matchmaking queue', () => {
     } finally { await closeAll(); }
   });
 
-  test('startNow with bots: the group starts together, AI fills the seats', async () => {
+  test('startNow with bots: vote passes → the group starts together, AI fills the seats', async () => {
     const [a, b] = await Promise.all([player('impatient'), player('patient2')]);
     try {
       await mmJoin(a, 'NORMAL');
       await mmJoin(b, 'NORMAL');
       srv.lobby.matchmaker.tick();
-      // only 2 queued: no team forms yet
       await a.expectNone('matchmaking.found', () => true, 200);
-      // the group skips the wait: AI teammates fill the empty seats, the match starts at once
+      // a opens a vote (auto-agrees: 1/2)
       const r = await a.request({ t: 'matchmaking.startNow', withBots: true });
       assert.equal(r.t, 'ok', JSON.stringify(r));
-      // both queued players land in the SAME room and the match starts
+      const vs = await a.waitFor('matchmaking.voteState', (m) => m.agree === 1 && m.total === 2, 2000);
+      assert.equal(vs.withBots, true);
+      assert.equal(vs.needed, 2);
+      // b agrees → 2/2 majority → the match starts
+      const vb = await b.request({ t: 'matchmaking.vote', agree: true });
+      assert.equal(vb.t, 'ok');
       const founds = await Promise.all([a, b].map((c) => c.waitFor('matchmaking.found', undefined, 3000)));
       const codes = new Set(founds.map((f) => f.code));
       assert.equal(codes.size, 1, 'same room for the whole group');
@@ -189,7 +193,7 @@ describe('matchmaking queue', () => {
     } finally { await closeAll(); }
   });
 
-  test('startNow without bots: the group plays short-handed', async () => {
+  test('startNow without bots: 3 players, 2 agree → the group plays short-handed', async () => {
     const [a, b, c] = await Promise.all([player('s1'), player('s2'), player('s3')]);
     try {
       await mmJoin(a, 'HARD');
@@ -197,8 +201,12 @@ describe('matchmaking queue', () => {
       await mmJoin(c, 'HARD');
       srv.lobby.matchmaker.tick();
       await a.expectNone('matchmaking.found', () => true, 200);
+      // b opens a vote (1/3, needs 2)
       const r = await b.request({ t: 'matchmaking.startNow', withBots: false });
       assert.equal(r.t, 'ok', JSON.stringify(r));
+      await b.waitFor('matchmaking.voteState', (m) => m.agree === 1 && m.total === 3, 2000);
+      // a agrees → 2/3 majority → pass (c never votes)
+      assert.equal((await a.request({ t: 'matchmaking.vote', agree: true })).t, 'ok');
       const founds = await Promise.all([a, b, c].map((p) => p.waitFor('matchmaking.found', undefined, 3000)));
       const codes = new Set(founds.map((f) => f.code));
       assert.equal(codes.size, 1, 'same room for the whole group');
@@ -208,6 +216,41 @@ describe('matchmaking queue', () => {
         assert.equal(st.seats.filter((s) => s && !s.isBot).length, 3, 'three humans');
         assert.equal(st.seats.filter((s) => s && s.isBot).length, 0, 'no AI');
       }
+    } finally { await closeAll(); }
+  });
+
+  test('startNow vote rejected: disagree blocks the start', async () => {
+    const [a, b] = await Promise.all([player('no1'), player('no2')]);
+    try {
+      await mmJoin(a, 'NORMAL');
+      await mmJoin(b, 'NORMAL');
+      srv.lobby.matchmaker.tick();
+      assert.equal((await a.request({ t: 'matchmaking.startNow', withBots: true })).t, 'ok');
+      await a.waitFor('matchmaking.voteState', (m) => m.agree === 1, 2000);
+      // b disagrees → cannot reach majority → vote fails
+      assert.equal((await b.request({ t: 'matchmaking.vote', agree: false })).t, 'ok');
+      const end = await a.waitFor('matchmaking.voteEnd', undefined, 2000);
+      assert.equal(end.passed, false);
+      await b.waitFor('matchmaking.voteEnd', (m) => m.passed === false, 2000);
+      // nobody started; both still queued
+      await a.expectNone('matchmaking.found', () => true, 200);
+      assert.equal(srv.lobby.matchmaker.queued(a.id), true);
+      assert.equal(srv.lobby.matchmaker.queued(b.id), true);
+    } finally { await closeAll(); }
+  });
+
+  test('startNow alone: no vote, starts at once with AI fill', async () => {
+    const c = await player('solo-starter');
+    try {
+      await mmJoin(c, 'FUNNY');
+      srv.lobby.matchmaker.tick();
+      const r = await c.request({ t: 'matchmaking.startNow', withBots: true });
+      assert.equal(r.t, 'ok', JSON.stringify(r));
+      await c.expectNone('matchmaking.voteState', () => true, 200, 'no vote when alone');
+      const found = await c.waitFor('matchmaking.found', undefined, 3000);
+      const st = await c.waitFor('room.state', (s) => s.code === found.code && s.inMatch === true, 3000);
+      assert.equal(st.seats.filter((s) => s && !s.isBot).length, 1);
+      assert.equal(st.seats.filter((s) => s && s.isBot).length, 3);
     } finally { await closeAll(); }
   });
 
@@ -226,8 +269,12 @@ describe('matchmaking protocol', () => {
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.startNow', withBots: true }), null);
     assert.equal(validateC2S({ t: 'matchmaking.startNow', withBots: false }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.vote', agree: true }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.vote', agree: false }), null);
     assert.ok(validateC2S({ t: 'matchmaking.startNow' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.startNow', withBots: 'yes' }).startsWith('bad field'));
+    assert.ok(validateC2S({ t: 'matchmaking.vote' }).startsWith('bad field'));
+    assert.ok(validateC2S({ t: 'matchmaking.vote', agree: 'yes' }).startsWith('bad field'));
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }), null);
     // unknown fields are ignored, not rejected
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
