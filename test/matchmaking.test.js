@@ -239,6 +239,30 @@ describe('matchmaking queue', () => {
     } finally { await closeAll(); }
   });
 
+  test('startNow vote cancelled by initiator', async () => {
+    const [a, b] = await Promise.all([player('canc1'), player('canc2')]);
+    try {
+      await mmJoin(a, 'NORMAL');
+      await mmJoin(b, 'NORMAL');
+      srv.lobby.matchmaker.tick();
+      assert.equal((await a.request({ t: 'matchmaking.startNow', withBots: true })).t, 'ok');
+      await a.waitFor('matchmaking.voteState', (m) => m.agree === 1, 2000);
+      // non-initiator cannot cancel
+      const bad = await b.request({ t: 'matchmaking.voteCancel' });
+      assert.equal(bad.t, 'error');
+      // initiator cancels
+      assert.equal((await a.request({ t: 'matchmaking.voteCancel' })).t, 'ok');
+      const end = await a.waitFor('matchmaking.voteEnd', undefined, 2000);
+      assert.equal(end.passed, false);
+      assert.equal(end.cancelled, true);
+      await b.waitFor('matchmaking.voteEnd', (m) => m.cancelled === true, 2000);
+      // both still queued, no match started
+      await a.expectNone('matchmaking.found', () => true, 200);
+      assert.equal(srv.lobby.matchmaker.queued(a.id), true);
+      assert.equal(srv.lobby.matchmaker.queued(b.id), true);
+    } finally { await closeAll(); }
+  });
+
   test('startNow alone: no vote, starts at once with AI fill', async () => {
     const c = await player('solo-starter');
     try {
@@ -271,6 +295,7 @@ describe('matchmaking protocol', () => {
     assert.equal(validateC2S({ t: 'matchmaking.startNow', withBots: false }), null);
     assert.equal(validateC2S({ t: 'matchmaking.vote', agree: true }), null);
     assert.equal(validateC2S({ t: 'matchmaking.vote', agree: false }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.voteCancel' }), null);
     assert.ok(validateC2S({ t: 'matchmaking.startNow' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.startNow', withBots: 'yes' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.vote' }).startsWith('bad field'));

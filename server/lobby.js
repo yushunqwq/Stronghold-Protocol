@@ -298,6 +298,7 @@ export class Lobby {
       case 'matchmaking.leave': this.matchmaker.leave(session.playerId); return OK;
       case 'matchmaking.startNow': return this.matchmaker.startNow(session, msg);
       case 'matchmaking.vote': return this.matchmaker.vote(session, msg);
+      case 'matchmaking.voteCancel': return this.matchmaker.cancelVote(session);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
