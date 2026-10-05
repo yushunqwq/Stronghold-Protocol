@@ -1,15 +1,15 @@
-// server/matchmaking.js — quick-match queue (快速匹配).
+// server/matchmaking.js — alliance match queue (同盟匹配).
 //
 // Players opt in with `matchmaking.join { difficulty }`; the matchmaker groups them by difficulty and,
-// on every tick, seats each complete team in a fresh co-op room. The room is an ordinary room from then
-// on: its host (the first queued) adds AI teammates and starts the match from the room lobby
-// (room.addBot / room.start) like any other room. A group that never completes is seated anyway once
-// its longest-waiting player hits `queueTimeoutMs` — one human plus bots beats waiting forever.
+// on every tick, seats each complete team of 4 in a fresh co-op room and starts its match immediately —
+// no room lobby, no AI teammates. The room is an ordinary room from then on; its match runs like any other.
 //
 // Rules:
 //   * one queue entry per player; joining with a new difficulty moves the entry (the wait restarts);
 //     joining while in a LOBBY room leaves it (like room.create / room.join); joining while your room
 //     runs a match fails with ROOM_STARTED.
+//   * only real players are matched (never bots); a team forms only when 4 are queued — no timeout,
+//     no short teams. Cancel anytime with `matchmaking.leave`.
 //   * disconnect / expiry / a manual room.create/join/spectate drops the entry (the tick also sweeps
 //     entries whose session is gone, disconnected, or seated meanwhile).
 //   * `matchmaking.state { inQueue, waiting, difficulty }` is pushed to the entry's difficulty group on
@@ -25,9 +25,7 @@ const fail = (code, detail) => (detail ? { error: code, detail } : { error: code
 
 /** Tunables. */
 export const MATCHMAKING_DEFAULTS = Object.freeze({
-  teamSize: 4,          // humans per formed team
-  queueTimeoutMs: 60000, // form a short team (bots fill the rest) after the longest wait hits this
-  seekTimeoutMs: 120000, // a seeking room stops seeking after this (the host starts by hand)
+  teamSize: 4,          // humans per formed team (real players only — never bots, never short teams)
   tickMs: 2000,         // 0 = no timer (tests drive tick() by hand)
   maxQueue: 200,
 });
@@ -74,9 +72,7 @@ export class Matchmaker {
   stats() {
     const byDifficulty = {};
     for (const e of this.queue.values()) byDifficulty[e.difficulty] = (byDifficulty[e.difficulty] || 0) + 1;
-    let seeking = 0;
-    for (const room of this.lobby.rooms.values()) if (room.seeking != null && !room.disposed) seeking++;
-    return { queued: this.queue.size, queuedByDifficulty: byDifficulty, seeking };
+    return { queued: this.queue.size, queuedByDifficulty: byDifficulty };
   }
 
   /**
@@ -117,9 +113,8 @@ export class Matchmaker {
   }
 
   /**
-   * Sweep stale entries, fill seeking rooms with queued individuals (oldest room first), then seat
-   * the remaining individuals in fresh rooms: a full team at once, or whatever is waiting once the
-   * longest wait hits the timeout.
+   * Sweep stale entries, then seat complete teams (exactly `teamSize` real players, same difficulty)
+   * in fresh rooms whose match starts immediately.
    */
   tick() {
     const lobby = this.lobby;
@@ -129,8 +124,6 @@ export class Matchmaker {
       if (!s || !s.connected || lobby.roomOf(s)) { this.queue.delete(pid); touched.add(e.difficulty); }
     }
     for (const d of touched) this._broadcastGroup(d);
-    const now = this.now();
-    this._fillSeeking(now);
     const groups = new Map();
     for (const e of this.queue.values()) {
       if (!groups.has(e.difficulty)) groups.set(e.difficulty, []);
@@ -144,71 +137,13 @@ export class Matchmaker {
         rest = rest.slice(this.opts.teamSize);
         this._formTeam(team);
       }
-      if (rest.length > 0 && now - rest[0].joinedAt >= this.opts.queueTimeoutMs) this._formTeam(rest);
+      // fewer than teamSize: keep waiting — no timeout, no bots, no short teams.
     }
   }
 
   /**
-   * Seat queued individuals into rooms whose host opened them with `matchmaking.seek` (oldest
-   * room first, longest-waiting individual first, same difficulty). A room that fills up stops
-   * seeking — the host starts the match by hand; a room that seeks past `seekTimeoutMs` stops too.
-   */
-  _fillSeeking(now) {
-    const lobby = this.lobby;
-    const seeking = [];
-    for (const room of lobby.rooms.values()) {
-      if (room.seeking != null && !room.match && !room.disposed) seeking.push(room);
-    }
-    if (!seeking.length) return;
-    seeking.sort((a, b) => a.seeking - b.seeking);
-    const byDiff = new Map();
-    for (const e of this.queue.values()) {
-      if (!byDiff.has(e.difficulty)) byDiff.set(e.difficulty, []);
-      byDiff.get(e.difficulty).push(e);
-    }
-    for (const list of byDiff.values()) {
-      list.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
-    }
-    for (const room of seeking) {
-      if (room.seeking == null) continue;
-      if (now - room.seeking >= this.opts.seekTimeoutMs) {
-        room.seeking = null;
-        lobby.broadcastState(room);
-        lobby.log.info(`[matchmaking] ${room.code} seeking timed out`);
-        continue;
-      }
-      const list = byDiff.get(room.difficulty);
-      if (!list || !list.length) continue;
-      let changed = false;
-      while (room.freeSeat() >= 0 && list.length > 0) {
-        const e = list.shift();
-        this.queue.delete(e.playerId);
-        const s = lobby.registry.byId(e.playerId);
-        if (!s || !s.connected || lobby.roomOf(s)) continue;
-        const jr = lobby.join(s, { code: room.code });
-        if (jr && jr.error) {
-          lobby.log.warn(`[matchmaking] ${room.code} seek-fill failed for ${s.name}: ${jr.error}`);
-        } else {
-          sendSession(s, { t: 'matchmaking.found', code: room.code });
-          changed = true;
-        }
-      }
-      if (room.freeSeat() < 0 && room.seeking != null) {
-        room.seeking = null; // full: the host starts the match by hand
-        lobby.log.info(`[matchmaking] ${room.code} seeking filled`);
-        changed = true;
-      }
-      if (changed) {
-        lobby.broadcastState(room);
-        this._broadcastGroup(room.difficulty);
-      }
-    }
-  }
-
-  /**
-   * Seat the team in a fresh co-op room and hand it to the players: the host (the first queued)
-   * adds AI teammates and starts the match from the room lobby like any other room.
-   * A failure re-queues the humans with their original wait instead of throwing.
+   * Seat the team in a fresh co-op room and start its match immediately — no room lobby, no AI
+   * teammates. A failure re-queues the humans with their original wait instead of throwing.
    * @param {{ playerId: string, difficulty: string, joinedAt: number }[]} team
    */
   _formTeam(team) {
@@ -229,13 +164,13 @@ export class Matchmaker {
       if (r && r.error) throw new Error(`create: ${r.error}`);
       room = lobby.getRoom(host.session.roomCode);
       if (!room) throw new Error('create: no room');
-      room.quickMatch = true; // the room lobby reads 开始匹配 (the host adds bots, then seeks/starts)
-      lobby.broadcastState(room); // the create broadcast went out before the flag was set
       for (const m of members.slice(1)) {
         const jr = lobby.join(m.session, { code: room.code });
         if (jr && jr.error) lobby.log.warn(`[matchmaking] ${room.code} join failed for ${m.session.name}: ${jr.error}`);
       }
-      // no bots, no auto-start: the host prepares the room (AI teammates, loadout) and starts it
+      // all humans, no bots: the match starts at once — the players never see the room lobby
+      const st = lobby.startMatch(room);
+      if (st && st.error) throw new Error(`startMatch: ${st.error}`);
     } catch (e) {
       lobby.log.error(`[matchmaking] forming a ${difficulty} team failed:`, e && e.message ? e.message : e);
       if (room) for (const m of members) lobby.removeMember(room, m.entry.playerId);

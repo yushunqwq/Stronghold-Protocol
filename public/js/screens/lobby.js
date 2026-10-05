@@ -76,9 +76,9 @@ const MODE_CARDS = [
     points: [`1–${MAX_SEATS} 名博士 · 可由 AI 队友补位`, '联防阶段 · 最终攻势合并生命值'],
   },
   {
-    id: 'quick', name: '快速匹配', en: 'QUICK MATCH', icon: 'signal',
-    desc: '直接创建同盟房间：进房先加 AI 队友，再开始匹配真人博士。',
-    points: ['按当前难度匹配空位', '进房后可先添加 AI 队友'],
+    id: 'quick', name: '同盟匹配', en: 'ALLIANCE MATCH', icon: 'signal',
+    desc: '匹配同难度的队友，凑齐 4 名博士后直接开始模拟。',
+    points: ['仅匹配主动搜寻的真人玩家', '可随时取消 · 不添加 AI 队友'],
   },
 ];
 
@@ -236,6 +236,7 @@ function DifficultyCard({ roomMode, difficulty, selected, onSelect }) {
 export function LobbyScreen() {
   const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
+  const mm = useStore((s) => s.matchmaking);
   useData('config');
   const [roomMode, setRoomMode] = useState(() => {
     const m = loadPref('lobby.mode', 'coop');
@@ -268,9 +269,6 @@ export function LobbyScreen() {
       if (alive.current) setBusy(null);
     }
   };
-  const create = () => isQuick
-    ? run('create', () => net.request('room.create', { mode: 'coop', difficulty, quickMatch: true }))
-    : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
   const join = (c = code) => {
     // `onClick=${join}` hands the click EVENT as the first argument, and a default parameter only applies to
     // `undefined` — codeArg keeps an event target out of the key and falls back to the input field
@@ -301,9 +299,16 @@ export function LobbyScreen() {
     identity.setEntered(false);
     store.set((s) => ({ session: { ...s.session, entered: false } }));
   };
-  // quick match (server/lobby.js): the 快速匹配 card creates a co-op room immediately
-  // (quickMatch: true); the host adds AI teammates, then opens the empty seats with 开始匹配.
+  // alliance match (server/matchmaking.js): the 同盟匹配 card joins the personal queue
+  // (matchmaking.join); the server forms a 4-human team and starts its match directly.
   const isQuick = roomMode === 'quick';
+  const create = () => isQuick
+    ? run('create', () => net.request('matchmaking.join', { difficulty }))
+    : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
+  const cancelMatch = () => run('cancel', () => net.request('matchmaking.leave', {}));
+
+  // alliance match: while queued, the create box becomes the matching status with a cancel button
+  const matching = mm && mm.inQueue;
 
   return html`<div class="screen lobby-screen">
     <header class="topbar">
@@ -361,16 +366,29 @@ export function LobbyScreen() {
           ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} />`)}
         </div>
         <div class="create-box">
-          <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? '开始独立模拟' : '创建同盟'}
+          ${matching ? html`
+            <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
+              <${Button} variant="secondary" size="xl" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
+                取消匹配
+              <//>
             <//>
-          <//>
-          <div class="create-box__hint">
-            ${online
-              ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '创建房间后可先添加 AI 队友，再开始匹配真人队友' : '创建后可邀请好友或添加 AI 队友'}</span>`
-              : html`<${Spinner} size="sm" label="CONNECTING" />`}
-          </div>
+            <div class="create-box__hint">
+              ${online
+                ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士</span>`
+                : html`<${Spinner} size="sm" label="CONNECTING" />`}
+            </div>
+          ` : html`
+            <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
+              <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
+                ${roomMode === 'solo' ? '开始独立模拟' : isQuick ? '开始匹配' : '创建同盟'}
+              <//>
+            <//>
+            <div class="create-box__hint">
+              ${online
+                ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '同难度 · 不补 AI' : '创建后可邀请好友或添加 AI 队友'}</span>`
+                : html`<${Spinner} size="sm" label="CONNECTING" />`}
+            </div>
+          `}
         </div>
       </section>
     </div>

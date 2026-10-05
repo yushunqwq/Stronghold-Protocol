@@ -1,7 +1,8 @@
-// test/matchmaking.test.js — quick match (server/lobby.js + server/matchmaking.js): the legacy queue
-// (queueing by difficulty, team formation, leaving, guards), the quick-match `room.create` flow
-// (immediate room, auto-join of seeking rooms), and seeking. Boots real servers in-process with the
-// matchmaker timer disabled (tickMs: 0) and drives tick() by hand.
+// test/matchmaking.test.js — alliance match (同盟匹配, server/lobby.js + server/matchmaking.js):
+// the queue (queueing by difficulty, team formation, leaving, guards). When 4 real players of the
+// same difficulty are queued, the server seats them in a fresh co-op room and starts its match
+// immediately — no room lobby, no AI teammates. Boots real servers in-process with the matchmaker
+// timer disabled (tickMs: 0) and drives tick() by hand.
 
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +13,7 @@ import { TestClient } from './helpers/wsClient.js';
 import { validateC2S } from '../shared/protocol.js';
 import { ERR } from '../shared/constants.js';
 
-const MM = { tickMs: 0, queueTimeoutMs: 120, seekTimeoutMs: 400, teamSize: 4 };
+const MM = { tickMs: 0, teamSize: 4 };
 
 let srv, url;
 before(async () => {
@@ -41,7 +42,7 @@ async function mmJoin(c, difficulty = 'NORMAL') {
 }
 
 describe('matchmaking queue', () => {
-  test('four players queue → they land in a room lobby (no auto-start, no auto bots)', async () => {
+  test('four players queue → the match starts immediately (no lobby, no bots)', async () => {
     const ps = await Promise.all(['m1', 'm2', 'm3', 'm4'].map(player));
     try {
       for (const c of ps) await mmJoin(c);
@@ -50,46 +51,27 @@ describe('matchmaking queue', () => {
       const codes = new Set(founds.map((f) => f.code));
       assert.equal(codes.size, 1, 'one room for the whole team');
       const code = founds[0].code;
-      // everyone was seated in the room lobby: no match yet, no bots, nobody forced ready
+      // the match started by itself: 4 humans, no bots, everyone in the match
       for (const c of ps) {
-        const st = await c.waitFor('room.state', (s) => s.code === code && s.seats.filter((x) => x && !x.isBot).length === 4, 3000);
-        assert.equal(st.inMatch, false, 'the match does not start by itself');
+        const st = await c.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
+        assert.equal(st.seats.filter((s) => s && !s.isBot).length, 4, 'four humans');
         assert.equal(st.seats.filter((s) => s && s.isBot).length, 0, 'no auto-added bots');
-        assert.ok(st.seats.every((s) => !s || s.isBot || s.ready === false), 'nobody is forced ready');
       }
-      // the first queued player hosts: everyone readies up and the host starts like any other room
-      const host = ps[0];
-      const lobby = await host.waitFor('room.state', (s) => s.code === code, 2000);
-      assert.equal(lobby.hostId, host.id, 'the first queued player hosts');
-      for (const c of ps) {
-        const r = await c.request({ t: 'room.ready', ready: true });
-        assert.equal(r.t, 'ok');
-      }
-      const rs = await host.request({ t: 'room.start' });
-      assert.equal(rs.t, 'ok', JSON.stringify(rs));
-      const started = await host.waitFor('room.state', (s) => s.code === code && s.inMatch === true, 3000);
-      assert.equal(started.seats.filter((s) => s && !s.isBot).length, 4);
+      // the queue is empty now
+      assert.equal(srv.lobby.matchmaker.queued(ps[0].id), false);
     } finally { await closeAll(); }
   });
 
-  test('a lone player is seated after the queue timeout and adds bots by hand', async () => {
-    const c = await player('solo-q');
+  test('fewer than four players keep waiting (no timeout, no short team)', async () => {
+    const ps = await Promise.all(['w1', 'w2', 'w3'].map(player));
     try {
-      await mmJoin(c, 'FUNNY');
-      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
+      for (const c of ps) await mmJoin(c);
       srv.lobby.matchmaker.tick();
-      const found = await c.waitFor('matchmaking.found', undefined, 3000);
-      const st = await c.waitFor('room.state', (s) => s.code === found.code && s.inMatch === false, 3000);
-      const humans = st.seats.filter((s) => s && !s.isBot);
-      const bots = st.seats.filter((s) => s && s.isBot);
-      assert.equal(humans.length, 1);
-      assert.equal(bots.length, 0, 'bots are added by the host, not the matchmaker');
-      assert.equal(st.hostId, c.id);
-      // the host fills the room with AI teammates before starting
-      const r = await c.request({ t: 'room.addBot' });
-      assert.equal(r.t, 'ok');
-      const withBot = await c.waitFor('room.state', (s) => s.seats.filter((x) => x && x.isBot).length === 1, 2000);
-      assert.equal(withBot.seats.filter((s) => s && !s.isBot).length, 1);
+      for (const c of ps) await c.expectNone('matchmaking.found', () => true, 300);
+      for (const c of ps) assert.equal(srv.lobby.matchmaker.queued(c.id), true, 'still queued');
+      // the waiting count is broadcast
+      const st = await ps[0].waitFor('matchmaking.state', (m) => m.inQueue === true && m.waiting === 3, 2000);
+      assert.equal(st.waiting, 3);
     } finally { await closeAll(); }
   });
 
@@ -166,152 +148,18 @@ describe('matchmaking queue', () => {
     } finally { await closeAll(); }
   });
 
-  test('a seeking room takes queued individuals of the same difficulty', async () => {
-    const host = await player('seeker');
-    const filler = await player('filler');
+  test('different difficulties queue separately', async () => {
+    const ps = await Promise.all(['d1', 'd2', 'd3', 'd4', 'd5'].map(player));
     try {
-      // the host gets a quick-match room alone via the queue timeout
-      await mmJoin(host, 'NORMAL');
-      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
+      await mmJoin(ps[0], 'NORMAL');
+      await mmJoin(ps[1], 'NORMAL');
+      await mmJoin(ps[2], 'HARD');
+      await mmJoin(ps[3], 'HARD');
+      await mmJoin(ps[4], 'HARD');
       srv.lobby.matchmaker.tick();
-      const found = await host.waitFor('matchmaking.found', undefined, 3000);
-      const code = found.code;
-      const st0 = await host.waitFor('room.state', (s) => s.code === code && s.quickMatch === true, 3000);
-      assert.equal(st0.seeking, false);
-      assert.equal(st0.seats.filter((s) => s && !s.isBot).length, 1);
-      // the host opens the empty seats to the queue (after adding one AI teammate by hand)
-      const ab = await host.request({ t: 'room.addBot' });
-      assert.equal(ab.t, 'ok');
-      const sk = await host.request({ t: 'matchmaking.seek', on: true });
-      assert.equal(sk.t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
-      // an individual queues and lands in the seeking room instead of a new one
-      await mmJoin(filler, 'NORMAL');
-      srv.lobby.matchmaker.tick();
-      const ff = await filler.waitFor('matchmaking.found', undefined, 3000);
-      assert.equal(ff.code, code, 'the filler joins the seeking room');
-      const st1 = await host.waitFor('room.state',
-        (s) => s.code === code && s.seats.filter((x) => x && !x.isBot).length === 2, 3000);
-      assert.equal(st1.seeking, true, 'still seeking with one empty seat left');
-      assert.equal(srv.lobby.matchmaker.queued(filler.id), false);
-    } finally { await closeAll(); }
-  });
-
-  test('seeking stops when the room fills; the host can cancel; guests cannot seek', async () => {
-    const host = await player('seeker2');
-    try {
-      await mmJoin(host, 'HARD');
-      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
-      srv.lobby.matchmaker.tick();
-      const found = await host.waitFor('matchmaking.found', undefined, 3000);
-      const code = found.code;
-      await host.waitFor('room.state', (s) => s.code === code && s.quickMatch === true, 3000);
-      // no empty seats: seeking is refused
-      for (let i = 0; i < 3; i++) assert.equal((await host.request({ t: 'room.addBot' })).t, 'ok');
-      const bad = await host.request({ t: 'matchmaking.seek', on: true });
-      assert.equal(bad.t, 'error');
-      assert.equal(bad.code, ERR.ALREADY);
-      // free one seat, seek, then cancel
-      assert.equal((await host.request({ t: 'room.removeBot', seat: 1 })).t, 'ok');
-      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
-      assert.equal((await host.request({ t: 'matchmaking.seek', on: false })).t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === code && s.seeking === false, 2000);
-      // a guest cannot seek
-      const guest = await player('guest2');
-      try {
-        assert.equal((await guest.request({ t: 'room.join', code })).t, 'ok');
-        await guest.waitFor('room.state', (s) => s.code === code && s.seats.some((x) => x && x.playerId === guest.id), 2000);
-        const nb = await guest.request({ t: 'matchmaking.seek', on: true });
-        assert.equal(nb.t, 'error');
-        assert.equal(nb.code, ERR.NOT_HOST);
-      } finally { clients.delete(guest); await guest.terminate().catch(() => {}); }
-    } finally { await closeAll(); }
-  });
-
-  test('seeking times out and the host starts by hand', async () => {
-    const host = await player('patient');
-    try {
-      await mmJoin(host, 'ABYSS');
-      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
-      srv.lobby.matchmaker.tick();
-      const found = await host.waitFor('matchmaking.found', undefined, 3000);
-      const code = found.code;
-      await host.waitFor('room.state', (s) => s.code === code, 3000);
-      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
-      // nobody queues: after seekTimeoutMs the tick stops seeking (no auto-start)
-      await new Promise((r) => setTimeout(r, MM.seekTimeoutMs + 100));
-      srv.lobby.matchmaker.tick();
-      const st = await host.waitFor('room.state', (s) => s.code === code && s.seeking === false, 2000);
-      assert.equal(st.inMatch, false, 'no auto-start: the host starts by hand');
-    } finally { await closeAll(); }
-  });
-});
-
-describe('quick-match create', () => {
-  test('room.create with quickMatch opens a room immediately (no queue)', async () => {
-    const c = await player('qm1');
-    try {
-      const r = await c.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true });
-      assert.equal(r.t, 'ok', JSON.stringify(r));
-      const st = await c.waitFor('room.state', (s) => s.quickMatch === true, 3000);
-      assert.equal(st.seeking, false);
-      assert.equal(st.seats.filter((s) => s && !s.isBot).length, 1, 'host sits alone');
-      assert.equal(srv.lobby.matchmaker.queued(c.id), false, 'never queued');
-    } finally { await closeAll(); }
-  });
-
-  test('quick-match create joins a seeking room of the same difficulty', async () => {
-    const host = await player('qmhost');
-    const guest = await player('qmguest');
-    try {
-      assert.equal((await host.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
-      const hs = await host.waitFor('room.state', (s) => s.quickMatch === true, 3000);
-      const code = hs.code;
-      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
-      // the newcomer lands in the seeking room instead of opening a new one
-      assert.equal((await guest.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
-      const found = await guest.waitFor('matchmaking.found', undefined, 3000);
-      assert.equal(found.code, code, 'seated in the seeking room');
-      const gs = await guest.waitFor('room.state',
-        (s) => s.code === code && s.seats.some((x) => x && x.playerId === guest.id), 3000);
-      assert.equal(gs.quickMatch, true);
-    } finally { await closeAll(); }
-  });
-
-  test('no auto-join when not seeking, difficulty differs, or alliance create', async () => {
-    const host = await player('qmhost2');
-    try {
-      assert.equal((await host.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
-      const hs = await host.waitFor('room.state', (s) => s.quickMatch === true, 3000);
-      // not seeking yet: a newcomer opens their own room
-      const other = await player('qmother');
-      try {
-        assert.equal((await other.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true })).t, 'ok');
-        const os = await other.waitFor('room.state', (s) => s.quickMatch === true, 3000);
-        assert.notEqual(os.code, hs.code, 'a non-seeking room is not joined');
-      } finally { clients.delete(other); await other.terminate().catch(() => {}); }
-      // seeking, but an alliance create never auto-joins a quick-match room
-      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
-      await host.waitFor('room.state', (s) => s.code === hs.code && s.seeking === true, 2000);
-      const ally = await player('ally');
-      try {
-        assert.equal((await ally.request({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' })).t, 'ok');
-        const as = await ally.waitFor('room.state',
-          (s) => s.quickMatch !== true && s.seats.some((x) => x && x.playerId === ally.id), 3000);
-        assert.notEqual(as.code, hs.code, 'alliance create ignores seeking quick-match rooms');
-        assert.equal(as.quickMatch, false);
-      } finally { clients.delete(ally); await ally.terminate().catch(() => {}); }
-      // seeking, but a different difficulty opens a new room
-      const diff = await player('qmdiff');
-      try {
-        assert.equal((await diff.request({ t: 'room.create', mode: 'coop', difficulty: 'HARD', quickMatch: true })).t, 'ok');
-        const ds = await diff.waitFor('room.state',
-          (s) => s.quickMatch === true && s.difficulty === 'HARD' && s.seats.some((x) => x && x.playerId === diff.id), 3000);
-        assert.notEqual(ds.code, hs.code, 'difficulty mismatch opens a new room');
-      } finally { clients.delete(diff); await diff.terminate().catch(() => {}); }
+      // nobody has 4 of the same difficulty: no team forms
+      for (const c of ps) await c.expectNone('matchmaking.found', () => true, 300);
+      for (const c of ps) assert.equal(srv.lobby.matchmaker.queued(c.id), true);
     } finally { await closeAll(); }
   });
 });
@@ -320,13 +168,12 @@ describe('matchmaking protocol', () => {
   test('validateC2S accepts the new messages, rejects bad fields', () => {
     assert.equal(validateC2S({ t: 'matchmaking.join', difficulty: 'NORMAL' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
-    assert.equal(validateC2S({ t: 'matchmaking.seek', on: true }), null);
-    assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
     assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL' }), null);
-    assert.ok(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: 'yes' }).startsWith('bad field'));
+    // unknown fields are ignored, not rejected
+    assert.equal(validateC2S({ t: 'room.create', mode: 'coop', difficulty: 'NORMAL', quickMatch: true }), null);
     assert.ok(validateC2S({ t: 'matchmaking.join', difficulty: 'NOPE' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.join' }).startsWith('bad field'));
-    assert.ok(validateC2S({ t: 'matchmaking.seek', on: 'yes' }).startsWith('bad field'));
-    assert.ok(validateC2S({ t: 'matchmaking.seek' }).startsWith('bad field'));
+    // matchmaking.seek was removed
+    assert.ok(validateC2S({ t: 'matchmaking.seek', on: true }).startsWith('unknown type'));
   });
 });
