@@ -78,7 +78,7 @@ const MODE_CARDS = [
   {
     id: 'quick', name: '同盟匹配', en: 'ALLIANCE MATCH', icon: 'signal',
     desc: '匹配同难度的队友，凑齐 4 名博士后直接开始模拟。',
-    points: ['仅匹配主动搜寻的真人玩家', '可随时取消 · 不添加 AI 队友'],
+    points: ['仅匹配主动搜寻的真人玩家', '可随时取消 · 人不足可 AI 补位'],
   },
 ];
 
@@ -370,16 +370,18 @@ export function LobbyScreen() {
         </div>
         <div class="create-box">
           ${matching ? html`
-            <${Tooltip} block=${true} text=${online ? '以当前匹配到的博士直接开局（人数不足，不补 AI）' : '正在连接服务器…'}>
-              <${Button} variant="primary" size="xl" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
-                直接开始
+            <div class="match-start-row">
+              <${Tooltip} block=${true} text=${online ? '以当前匹配到的博士直接开局（人数不足，不补 AI）' : '正在连接服务器…'}>
+                <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
+                  直接开始
+                <//>
               <//>
-            <//>
-            <${Tooltip} block=${true} text=${online ? 'AI 队友补齐空位至 4 人后开局' : '正在连接服务器…'}>
-              <${Button} variant="secondary" size="xl" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
-                AI 补位开始
+              <${Tooltip} block=${true} text=${online ? 'AI 队友补齐空位至 4 人后开局' : '正在连接服务器…'}>
+                <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
+                  AI 补位开始
+                <//>
               <//>
-            <//>
+            </div>
             <div class="create-box__hint">
               ${online
                 ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士</span>`
@@ -398,7 +400,7 @@ export function LobbyScreen() {
             <//>
             <div class="create-box__hint">
               ${online
-                ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '同难度 · 不补 AI' : '创建后可邀请好友或添加 AI 队友'}</span>`
+                ? html`<span>${roomMode === 'solo' ? '创建后即可开始模拟' : isQuick ? '同难度 · 可 AI 补位' : '创建后可邀请好友或添加 AI 队友'}</span>`
                 : html`<${Spinner} size="sm" label="CONNECTING" />`}
             </div>
           `}
