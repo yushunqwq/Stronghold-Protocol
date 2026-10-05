@@ -195,6 +195,8 @@ export function createBattleRunner(deps) {
   let lastPool = null;
   /** solo pause: the runner clock's instant when m.public.paused turned true (null while running) */
   let pausedAt = null;
+  /** client 2× toggle: multiplies every local battle's sim speed (1 = normal, 2 = double) */
+  let speedMul = 1;
   /** a normal field's leak count (or a battle's bond layers) changed since the last publishState() */
   let leaksDirty = false;
   const stats = { ticks: 0, stepMs: 0, maxFrameMs: 0, catchups: 0, errors: 0, battles: 0, frames: 0 };
@@ -322,7 +324,7 @@ export function createBattleRunner(deps) {
   function flushLeaks() { if (leaksDirty) publishState(); }
 
   /** Target tick of an entry on its clock. */
-  const targetTick = (e, t) => Math.max(0, Math.floor((((t - e.t0) / 1000) * e.speed) / TICK + 1e-9));
+  const targetTick = (e, t) => Math.max(0, Math.floor((((t - e.t0) / 1000) * e.speed * speedMul) / TICK + 1e-9));
 
   /**
    * Step `n` ticks. `sliced` (a catch-up frame, a hidden-tab step): every EV_SLICE ticks the events drained so far go to
@@ -506,12 +508,33 @@ export function createBattleRunner(deps) {
     schedule();
   }
 
+  /**
+   * Client 2× toggle: scale every local battle's sim speed (1 = normal, 2 = double). Each battle's
+   * clock is re-anchored so its tick count stays continuous — no jump, no catch-up burst. The caller
+   * (game screen) also refreshes the render interpolation via view.setLocalFeed with the new
+   * effective speed. Returns the applied multiplier.
+   */
+  function setSpeedMul(m) {
+    m = m >= 2 ? 2 : 1;
+    if (m === speedMul) return m;
+    const t = clock();
+    for (const e of entries.values()) {
+      if (e.battle.finished) continue;
+      const tick = Math.max(0, Math.floor((((t - e.t0) / 1000) * e.speed * speedMul) / TICK + 1e-9));
+      e.t0 = t - ((tick * TICK) / (e.speed * m)) * 1000;
+    }
+    speedMul = m;
+    publishState();
+    schedule();
+    return m;
+  }
+
   /** Advance one entry to its clock (bounded); render it when it is on screen. */
   function advance(e, t, render) {
     if (e.battle.finished) { if (!e.done) finished(e); return; }
     const behind = targetTick(e, t) - (e.battle.tickCount || 0);
     if (behind <= 0) return;
-    const cap = ticksPerFrameCap(e.speed);
+    const cap = ticksPerFrameCap(e.speed * speedMul);
     const catchingUp = behind > cap * 4;
     if (catchingUp) stats.catchups++;
     const n = Math.min(behind, catchingUp ? CATCHUP_TICKS : cap);
@@ -598,7 +621,7 @@ export function createBattleRunner(deps) {
       if (msg.authoritative && existing.resultSent) deliver(existing);
       if (existing.authoritative && !was) {
         // handover (the partner left): continue from the field's clock and report from now on
-        existing.t0 = clock() - ((Number(msg.elapsed) || 0) / speed) * 1000;
+        existing.t0 = clock() - ((Number(msg.elapsed) || 0) / (speed * speedMul)) * 1000;
         existing.lastProgressAt = -Infinity;
         if (existing.battle.finished) { existing.done = false; finished(existing); }
       }
@@ -633,7 +656,7 @@ export function createBattleRunner(deps) {
       battleId: msg.battleId, fieldId: msg.fieldId || msg.spec.fieldId, kind: msg.kind || msg.spec.kind, spec: msg.spec, sim, battle,
       authoritative: !!msg.authoritative, watch: !!msg.watch, own: !msg.watch, speed,
       members: (msg.spec.players || []).map((p) => p && p.playerId).filter(Boolean),
-      t0: clock() - ((Number(msg.elapsed) || 0) / speed) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
+      t0: clock() - ((Number(msg.elapsed) || 0) / (speed * speedMul)) * 1000, lastProgressAt: -Infinity, done: false, resultSent: false,
       result: null, delivery: null,
       meter: sim.spec.attachLpMeter(battle),
       // counted leaks so far (normal fields; noteLeaks) and the Battle state they were counted at; 联防 fields: each
@@ -650,7 +673,7 @@ export function createBattleRunner(deps) {
       battle.sharedBoss.sync(lastPool.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined);
     }
     // silent catch-up to the field's clock before it is shown (a reconnect / observing a running field)
-    while (!battle.finished && targetTick(e, clock()) - battle.tickCount > ticksPerFrameCap(speed)) {
+    while (!battle.finished && targetTick(e, clock()) - battle.tickCount > ticksPerFrameCap(speed * speedMul)) {
       const n = Math.min(PREPARE_SLICE, targetTick(e, clock()) - battle.tickCount);
       stepEntry(e, n);
       try { battle.drainEvents(); } catch { /* ignore */ }
@@ -797,6 +820,10 @@ export function createBattleRunner(deps) {
     },
     /** Re-show the current battle (the game screen remounted). */
     reshow() { if (cur) show(cur); },
+    /** Current client speed multiplier (1 = normal, 2 = double). */
+    speedMul: () => speedMul,
+    /** Client 2× toggle: scale the local sim speed; re-anchors battle clocks (no jump). */
+    setSpeedMul,
     /** Test / debug hooks. */
     _entries: entries,
     _frame: frame,
