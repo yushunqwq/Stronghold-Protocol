@@ -9,8 +9,9 @@
 //     joining while in a LOBBY room leaves it (like room.create / room.join); joining while your room
 //     runs a match fails with ROOM_STARTED.
 //   * only real players are matched (never bots); a team forms only when 4 are queued — no timeout,
-//     no short teams. Cancel anytime with `matchmaking.leave`; `matchmaking.startNow` skips the wait
-//     (AI teammates fill the empty seats and the match starts at once).
+//     no short teams. Cancel anytime with `matchmaking.leave`; `matchmaking.startNow { withBots }`
+//     skips the wait: the queued group enters one room and the match starts at once (AI fills the
+//     empty seats when withBots, otherwise the humans play short-handed).
 //   * disconnect / expiry / a manual room.create/join/spectate drops the entry (the tick also sweeps
 //     entries whose session is gone, disconnected, or seated meanwhile).
 //   * `matchmaking.state { inQueue, waiting, difficulty }` is pushed to the entry's difficulty group on
@@ -104,50 +105,67 @@ export class Matchmaker {
   }
 
   /**
-   * `matchmaking.startNow` — the player is tired of waiting: leave the queue, fill the empty seats
-   * with AI teammates, and start the match immediately. Only the requesting player is taken; other
-   * queued players are unaffected.
+   * `matchmaking.startNow { withBots }` — the group is tired of waiting: take all queued players of
+   * the requester's difficulty into one room and start the match immediately. With `withBots`, AI
+   * teammates fill the empty seats to `teamSize`; without, the humans play short-handed.
    * @param {import('./net.js').Session} session
    */
-  startNow(session) {
+  startNow(session, { withBots }) {
     const lobby = this.lobby;
     const pid = session.playerId;
     const e = this.queue.get(pid);
     if (!e) return fail(ERR.BAD_MSG, 'not in matchmaking queue');
     const difficulty = e.difficulty;
-    this.queue.delete(pid);
-    const s = lobby.registry.byId(pid);
-    if (!s || !s.connected || lobby.roomOf(s)) {
-      this._broadcastGroup(difficulty);
-      return fail(ERR.BAD_MSG, 'cannot start now');
+    // the whole difficulty group starts together
+    const team = [];
+    for (const en of this.queue.values()) {
+      if (en.difficulty === difficulty) team.push(en);
     }
+    team.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
+    const members = [];
+    for (const en of team) {
+      const s = lobby.registry.byId(en.playerId);
+      if (s && s.connected && !lobby.roomOf(s)) members.push({ entry: en, session: s });
+      this.queue.delete(en.playerId);
+    }
+    if (members.length === 0) { this._broadcastGroup(difficulty); return fail(ERR.BAD_MSG, 'cannot start now'); }
+    const host = members[0];
     let room = null;
     try {
-      const r = lobby.create(s, { mode: 'coop', difficulty });
+      const r = lobby.create(host.session, { mode: 'coop', difficulty });
       if (r && r.error) throw new Error(`create: ${r.error}`);
-      room = lobby.getRoom(s.roomCode);
+      room = lobby.getRoom(host.session.roomCode);
       if (!room) throw new Error('create: no room');
-      // AI teammates fill the empty seats
-      while (room.seats.filter(Boolean).length < this.opts.teamSize) {
-        if (!lobby.addBotDirect(room)) break;
+      for (const m of members.slice(1)) {
+        const jr = lobby.join(m.session, { code: room.code });
+        if (jr && jr.error) lobby.log.warn(`[matchmaking] ${room.code} startNow join failed for ${m.session.name}: ${jr.error}`);
       }
-      lobby.broadcastState(room);
+      if (withBots) {
+        while (room.seats.filter(Boolean).length < this.opts.teamSize) {
+          if (!lobby.addBotDirect(room)) break;
+        }
+        lobby.broadcastState(room);
+      }
       const st = lobby.startMatch(room);
       if (st && st.error) throw new Error(`startMatch: ${st.error}`);
     } catch (err) {
-      lobby.log.error(`[matchmaking] startNow failed for ${s.name}:`, err && err.message ? err.message : err);
-      if (room) lobby.removeMember(room, pid);
+      lobby.log.error(`[matchmaking] startNow failed (${difficulty}):`, err && err.message ? err.message : err);
+      if (room) for (const m of members) lobby.removeMember(room, m.entry.playerId);
       // back to the queue with the original wait
-      if (!this.queue.has(pid)) {
-        this.queue.set(pid, { playerId: pid, difficulty, joinedAt: Math.min(e.joinedAt, this.now()) });
+      const now = this.now();
+      for (const m of members) {
+        if (!this.queue.has(m.entry.playerId)) {
+          this.queue.set(m.entry.playerId, { playerId: m.entry.playerId, difficulty, joinedAt: Math.min(m.entry.joinedAt, now) });
+        }
+        if (m.session.connected) sendSession(m.session, { t: 'matchmaking.state', inQueue: true, waiting: 0, difficulty });
       }
-      if (s.connected) sendSession(s, { t: 'matchmaking.state', inQueue: true, waiting: 0, difficulty });
       this._broadcastGroup(difficulty);
       return fail(ERR.INTERNAL, 'failed to start');
     }
-    sendSession(s, { t: 'matchmaking.found', code: room.code });
+    for (const m of members) sendSession(m.session, { t: 'matchmaking.found', code: room.code });
     this._broadcastGroup(difficulty);
-    lobby.log.info(`[matchmaking] ${room.code} startNow (${difficulty}): ${s.name} + bots, match started`);
+    const bots = room.seats.filter((s) => s && s.isBot).length;
+    lobby.log.info(`[matchmaking] ${room.code} startNow (${difficulty}): ${members.length} humans${bots ? ` + ${bots} bots` : ''}, match started`);
     return OK;
   }
 

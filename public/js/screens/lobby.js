@@ -306,8 +306,9 @@ export function LobbyScreen() {
     ? run('create', () => net.request('matchmaking.join', { difficulty }))
     : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
   const cancelMatch = () => run('cancel', () => net.request('matchmaking.leave', {}));
-  // tired of waiting: AI teammates fill the empty seats and the match starts at once
-  const startNow = () => run('startNow', () => net.request('matchmaking.startNow', {}));
+  // tired of waiting: the queued group enters one room and starts at once —
+  // directly (short-handed) or with AI teammates filling the empty seats
+  const startNow = (withBots) => run(withBots ? 'startNowBots' : 'startNow', () => net.request('matchmaking.startNow', { withBots }));
 
   // alliance match: while queued, the create box becomes the matching status with a cancel button
   const matching = mm && mm.inQueue;
@@ -369,18 +370,23 @@ export function LobbyScreen() {
         </div>
         <div class="create-box">
           ${matching ? html`
-            <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-              <${Button} variant="primary" size="xl" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${startNow}>
+            <${Tooltip} block=${true} text=${online ? '以当前匹配到的博士直接开局（人数不足，不补 AI）' : '正在连接服务器…'}>
+              <${Button} variant="primary" size="xl" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
                 直接开始
+              <//>
+            <//>
+            <${Tooltip} block=${true} text=${online ? 'AI 队友补齐空位至 4 人后开局' : '正在连接服务器…'}>
+              <${Button} variant="secondary" size="xl" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
+                AI 补位开始
               <//>
             <//>
             <div class="create-box__hint">
               ${online
-                ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士 · 不等了？AI 自动补位直接开局</span>`
+                ? html`<span><${Spinner} size="sm" /> 匹配中 · 已有 <span class="num">${mm.waiting}</span> / 4 名博士</span>`
                 : html`<${Spinner} size="sm" label="CONNECTING" />`}
             </div>
             <${Tooltip} block=${true} text=${online ? null : '正在连接服务器…'}>
-              <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
+              <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
                 取消匹配
               <//>
             <//>

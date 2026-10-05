@@ -266,8 +266,9 @@ export const C2S = {
   // `matchmaking.found { code }` fires when the team is seated (room.state with inMatch follows).
   'matchmaking.join': { difficulty: (v) => DIFFICULTIES.includes(v) },
   'matchmaking.leave': {},
-  // the queued player is tired of waiting: AI teammates fill the empty seats and the match starts at once
-  'matchmaking.startNow': {},
+  // the queued group is tired of waiting: they enter one room and the match starts at once.
+  // withBots fills the empty seats with AI teammates; without, the humans play short-handed.
+  'matchmaking.startNow': { withBots: (v) => typeof v === 'boolean' },
 
   // match
   'g.infoReady': {},
