@@ -253,6 +253,7 @@ function wireNet() {
     store.set({
       matchVote: {
         withBots: !!msg.withBots,
+        initiator: typeof msg.initiator === 'string' ? msg.initiator : null,
         initiatorName: typeof msg.initiatorName === 'string' ? msg.initiatorName : '博士',
         agree: Math.max(0, msg.agree | 0),
         disagree: Math.max(0, msg.disagree | 0),
@@ -264,7 +265,7 @@ function wireNet() {
   });
   net.on('matchmaking.voteEnd', (msg) => {
     store.set({ matchVote: null });
-    if (!msg || !msg.passed) toast('投票未通过，继续等待匹配', 'warn');
+    if (!msg || !msg.passed) toast(msg && msg.cancelled ? '投票已取消' : '投票未通过，继续等待匹配', 'warn');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.

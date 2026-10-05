@@ -311,6 +311,7 @@ export function LobbyScreen() {
   // directly (short-handed) or with AI teammates filling the empty seats
   const startNow = (withBots) => run(withBots ? 'startNowBots' : 'startNow', () => net.request('matchmaking.startNow', { withBots }));
   const castVote = (agree) => run(agree ? 'voteYes' : 'voteNo', () => net.request('matchmaking.vote', { agree }));
+  const cancelVote = () => run('voteCancel', () => net.request('matchmaking.voteCancel', {}));
 
   // alliance match: while queued, the create box becomes the matching status with a cancel button
   const matching = mm && mm.inQueue;
@@ -376,7 +377,7 @@ export function LobbyScreen() {
               <div class="vote-box">
                 <div class="vote-box__title">
                   <${Icon} name="vote" />
-                  <span>${vote.initiatorName} 发起投票：${vote.withBots ? 'AI 补位开始' : '直接开始'}</span>
+                  <span>${vote.initiator === me.playerId ? '你发起投票' : `${vote.initiatorName} 发起投票`}：${vote.withBots ? 'AI 补位开始' : '直接开始'}</span>
                 </div>
                 <div class="vote-box__progress">
                   <span class="t-mint">同意 <span class="num">${vote.agree}</span></span>
@@ -384,14 +385,25 @@ export function LobbyScreen() {
                   <span class="t-orange">拒绝 <span class="num">${vote.disagree}</span></span>
                   <span class="t-dim">（需 <span class="num">${vote.needed}</span> 票通过，共 <span class="num">${vote.total}</span> 人）</span>
                 </div>
-                <div class="match-start-row">
-                  <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => castVote(true)}>
-                    同意
-                  <//>
-                  <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => castVote(false)}>
-                    拒绝
-                  <//>
-                </div>
+                ${vote.initiator === me.playerId ? html`
+                  <div class="match-start-row">
+                    <${Button} variant="secondary" size="lg" block=${true} icon="hourglass" disabled=${true}>
+                      等待其他玩家回应
+                    <//>
+                    <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${cancelVote}>
+                      取消投票
+                    <//>
+                  </div>
+                ` : html`
+                  <div class="match-start-row">
+                    <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => castVote(true)}>
+                      同意
+                    <//>
+                    <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => castVote(false)}>
+                      拒绝
+                    <//>
+                  </div>
+                `}
               </div>
             ` : html`
               <div class="match-start-row">
