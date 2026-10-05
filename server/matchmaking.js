@@ -27,6 +27,7 @@ const fail = (code, detail) => (detail ? { error: code, detail } : { error: code
 export const MATCHMAKING_DEFAULTS = Object.freeze({
   teamSize: 4,          // humans per formed team
   queueTimeoutMs: 60000, // form a short team (bots fill the rest) after the longest wait hits this
+  seekTimeoutMs: 120000, // a seeking room stops seeking after this (the host starts by hand)
   tickMs: 2000,         // 0 = no timer (tests drive tick() by hand)
   maxQueue: 200,
 });
@@ -73,7 +74,9 @@ export class Matchmaker {
   stats() {
     const byDifficulty = {};
     for (const e of this.queue.values()) byDifficulty[e.difficulty] = (byDifficulty[e.difficulty] || 0) + 1;
-    return { queued: this.queue.size, queuedByDifficulty: byDifficulty };
+    let seeking = 0;
+    for (const room of this.lobby.rooms.values()) if (room.seeking != null && !room.disposed) seeking++;
+    return { queued: this.queue.size, queuedByDifficulty: byDifficulty, seeking };
   }
 
   /**
@@ -114,8 +117,9 @@ export class Matchmaker {
   }
 
   /**
-   * Sweep stale entries, then form a team per difficulty: a full team at once, or whatever is waiting
-   * once the longest wait hits the timeout.
+   * Sweep stale entries, fill seeking rooms with queued individuals (oldest room first), then seat
+   * the remaining individuals in fresh rooms: a full team at once, or whatever is waiting once the
+   * longest wait hits the timeout.
    */
   tick() {
     const lobby = this.lobby;
@@ -125,12 +129,13 @@ export class Matchmaker {
       if (!s || !s.connected || lobby.roomOf(s)) { this.queue.delete(pid); touched.add(e.difficulty); }
     }
     for (const d of touched) this._broadcastGroup(d);
+    const now = this.now();
+    this._fillSeeking(now);
     const groups = new Map();
     for (const e of this.queue.values()) {
       if (!groups.has(e.difficulty)) groups.set(e.difficulty, []);
       groups.get(e.difficulty).push(e);
     }
-    const now = this.now();
     for (const list of groups.values()) {
       list.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
       let rest = list;
@@ -140,6 +145,63 @@ export class Matchmaker {
         this._formTeam(team);
       }
       if (rest.length > 0 && now - rest[0].joinedAt >= this.opts.queueTimeoutMs) this._formTeam(rest);
+    }
+  }
+
+  /**
+   * Seat queued individuals into rooms whose host opened them with `matchmaking.seek` (oldest
+   * room first, longest-waiting individual first, same difficulty). A room that fills up stops
+   * seeking — the host starts the match by hand; a room that seeks past `seekTimeoutMs` stops too.
+   */
+  _fillSeeking(now) {
+    const lobby = this.lobby;
+    const seeking = [];
+    for (const room of lobby.rooms.values()) {
+      if (room.seeking != null && !room.match && !room.disposed) seeking.push(room);
+    }
+    if (!seeking.length) return;
+    seeking.sort((a, b) => a.seeking - b.seeking);
+    const byDiff = new Map();
+    for (const e of this.queue.values()) {
+      if (!byDiff.has(e.difficulty)) byDiff.set(e.difficulty, []);
+      byDiff.get(e.difficulty).push(e);
+    }
+    for (const list of byDiff.values()) {
+      list.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
+    }
+    for (const room of seeking) {
+      if (room.seeking == null) continue;
+      if (now - room.seeking >= this.opts.seekTimeoutMs) {
+        room.seeking = null;
+        lobby.broadcastState(room);
+        lobby.log.info(`[matchmaking] ${room.code} seeking timed out`);
+        continue;
+      }
+      const list = byDiff.get(room.difficulty);
+      if (!list || !list.length) continue;
+      let changed = false;
+      while (room.freeSeat() >= 0 && list.length > 0) {
+        const e = list.shift();
+        this.queue.delete(e.playerId);
+        const s = lobby.registry.byId(e.playerId);
+        if (!s || !s.connected || lobby.roomOf(s)) continue;
+        const jr = lobby.join(s, { code: room.code });
+        if (jr && jr.error) {
+          lobby.log.warn(`[matchmaking] ${room.code} seek-fill failed for ${s.name}: ${jr.error}`);
+        } else {
+          sendSession(s, { t: 'matchmaking.found', code: room.code });
+          changed = true;
+        }
+      }
+      if (room.freeSeat() < 0 && room.seeking != null) {
+        room.seeking = null; // full: the host starts the match by hand
+        lobby.log.info(`[matchmaking] ${room.code} seeking filled`);
+        changed = true;
+      }
+      if (changed) {
+        lobby.broadcastState(room);
+        this._broadcastGroup(room.difficulty);
+      }
     }
   }
 
@@ -167,6 +229,8 @@ export class Matchmaker {
       if (r && r.error) throw new Error(`create: ${r.error}`);
       room = lobby.getRoom(host.session.roomCode);
       if (!room) throw new Error('create: no room');
+      room.quickMatch = true; // the room lobby reads 开始匹配 (the host adds bots, then seeks/starts)
+      lobby.broadcastState(room); // the create broadcast went out before the flag was set
       for (const m of members.slice(1)) {
         const jr = lobby.join(m.session, { code: room.code });
         if (jr && jr.error) lobby.log.warn(`[matchmaking] ${room.code} join failed for ${m.session.name}: ${jr.error}`);

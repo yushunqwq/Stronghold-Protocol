@@ -151,6 +151,15 @@ export class Room {
     this.matchKey = null;
     this.createdAt = now;
     this.disposed = false;
+    /**
+     * quick-match seeking (server/matchmaking.js `matchmaking.seek`): timestamp when the host opened
+     * the room's empty seats to the queue, null when not seeking. Seeking only fills seats; the host
+     * always starts the match by hand.
+     * @type {number | null}
+     */
+    this.seeking = null;
+    /** true when the room was formed by the quick-match queue (its lobby button reads 开始匹配) */
+    this.quickMatch = false;
   }
 
   /** @param {string} playerId @returns {Seat | null} */
@@ -177,6 +186,8 @@ export class Room {
       mode: this.mode,
       difficulty: this.difficulty,
       inMatch: !!this.match,
+      seeking: this.seeking != null,
+      quickMatch: !!this.quickMatch,
       seats: this.seats.map((s) => (s
         ? { seat: s.seat, playerId: s.playerId, name: s.name, isBot: s.isBot, ready: s.ready, connected: s.connected && !s.left }
         : null)),
@@ -296,6 +307,7 @@ export class Lobby {
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
       case 'matchmaking.join': return this.matchmaker.join(session, msg);
       case 'matchmaking.leave': this.matchmaker.leave(session.playerId); return OK;
+      case 'matchmaking.seek': return this.seekMatchmaking(session, msg);
       default:
         if (typeof msg.t === 'string' && msg.t.startsWith('g.')) return this.routeGame(session, msg);
         return fail(ERR.BAD_MSG, `unhandled type ${String(msg.t).slice(0, 32)}`);
@@ -533,6 +545,31 @@ export class Lobby {
       else { kicked.notice = 'kicked'; kicked.pendingResult = replay; }
     }
     this.log.info(`[lobby] ${room.code} ${target.name} removed by the host`);
+    return OK;
+  }
+
+  /**
+   * matchmaking.seek { on }: the host opens the room's empty seats to the quick-match queue
+   * (server/matchmaking.js fills them on its tick). Seeking only fills seats — the host always
+   * starts the match by hand. Solo rooms cannot seek.
+   */
+  seekMatchmaking(session, { on }) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo rooms cannot seek');
+    if (on) {
+      if (room.seeking != null) return OK;
+      if (room.freeSeat() < 0) return fail(ERR.ALREADY, 'no empty seats');
+      room.seeking = this.now();
+      this.log.info(`[lobby] ${room.code} seeking quick-match players`);
+    } else {
+      if (room.seeking == null) return OK;
+      room.seeking = null;
+      this.log.info(`[lobby] ${room.code} stopped seeking`);
+    }
+    this.broadcastState(room);
     return OK;
   }
 

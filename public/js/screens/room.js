@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MAX_SEATS, MAX_SPECTATORS } from '../../../shared/constants.js';
 import {
-  html, Button, Icon, MicroLabel, PingPill, AvatarFrame, DifficultyTag, DifficultyIcon, Tooltip, confirmDialog, doctorNo,
+  html, Button, Icon, MicroLabel, PingPill, AvatarFrame, DifficultyTag, DifficultyIcon, Tooltip, Spinner, confirmDialog, doctorNo,
 } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
 import { copyText } from '../ui/clipboard.js';
@@ -215,6 +215,15 @@ export function RoomScreen() {
 
   const toggleReady = () => run('ready', () => net.request('room.ready', { ready: !myReady }));
   const start = () => run('start', () => net.request('room.start', {}));
+  // quick-match rooms (server/matchmaking.js): the lobby button reads 开始匹配. With empty seats it opens
+  // them to the queue (matchmaking.seek); with none left it just starts the match like 开始模拟.
+  const quickMatch = !!room.quickMatch;
+  const seeking = !!room.seeking;
+  const emptySeats = facts.seats.filter((s) => !s).length;
+  const startMatch = () => emptySeats > 0
+    ? run('seek', () => net.request('matchmaking.seek', { on: true }))
+    : run('start', () => net.request('room.start', {}));
+  const cancelSeek = () => run('seek', () => net.request('matchmaking.seek', { on: false }));
   const addBot = () => run('add', () => net.request('room.addBot', {}));
   const removeBot = (seat) => run(`rm${seat}`, () => net.request('room.removeBot', { seat }));
   // the host removes a human before the match (community report #17): asked first; the player may join again. The
@@ -256,9 +265,11 @@ export function RoomScreen() {
     : !coop
       ? html`<span class="t-mint">*模拟协议已就绪，准许进入模拟</span>`
     : facts.isHost
-      ? facts.canStart
-        ? html`<span class="t-mint">*同盟人数达标，准许进入模拟</span>`
-        : html`<span class="t-lo">等待所有博士准备就绪</span>`
+      ? seeking
+        ? html`<span class="t-mint"><${Icon} name="signal" />匹配中 · 空位 ${emptySeats}（排队中的博士会自动加入）</span>`
+        : facts.canStart
+          ? html`<span class="t-mint">*同盟人数达标，准许进入模拟</span>`
+          : html`<span class="t-lo">等待所有博士准备就绪</span>`
       : myReady
         ? html`<span class="t-mint">已就绪 · 等待创建者开始模拟</span>`
         : html`<span class="t-lo">准备就绪后，创建者即可开始模拟</span>`;
@@ -318,9 +329,19 @@ export function RoomScreen() {
       <div class="room-bar__right">
         <${LoadoutButton} from="room" size="lg" class="room-loadout" />
         ${facts.isHost
-          ? html`<${Tooltip} text=${facts.canStart ? null : '仍有博士未准备就绪'}>
-              <${Button} variant="primary" size="xl" icon="play" loading=${busy === 'start'} disabled=${!facts.canStart || !online} onClick=${start}>开始模拟<//>
-            <//>`
+          ? seeking
+            ? html`<div class="seek-box">
+                <${Spinner} size="sm" label="MATCHING" />
+                <span class="seek-box__text num">${facts.humans.length}/${MAX_SEATS} 人</span>
+                <${Button} variant="secondary" size="lg" loading=${busy === 'seek'} disabled=${!online} onClick=${cancelSeek}>取消匹配<//>
+              </div>`
+            : quickMatch
+              ? html`<${Tooltip} text=${emptySeats > 0 ? '从排队中匹配博士填补空位；无空位时直接开始' : null}>
+                  <${Button} variant="primary" size="xl" icon="play" loading=${busy === 'seek' || busy === 'start'} disabled=${!online} onClick=${startMatch}>开始匹配<//>
+                <//>`
+              : html`<${Tooltip} text=${facts.canStart ? null : '仍有博士未准备就绪'}>
+                  <${Button} variant="primary" size="xl" icon="play" loading=${busy === 'start'} disabled=${!facts.canStart || !online} onClick=${start}>开始模拟<//>
+                <//>`
           : facts.spectating
             ? html`<${Button} variant="secondary" size="xl" icon="eye" disabled=${true}>观战中<//>`
           : html`<${Button} variant=${myReady ? 'primary' : 'secondary'} size="xl" icon=${myReady ? 'check' : 'hourglass'} active=${myReady}

@@ -11,7 +11,7 @@ import { TestClient } from './helpers/wsClient.js';
 import { validateC2S } from '../shared/protocol.js';
 import { ERR } from '../shared/constants.js';
 
-const MM = { tickMs: 0, queueTimeoutMs: 120, teamSize: 4 };
+const MM = { tickMs: 0, queueTimeoutMs: 120, seekTimeoutMs: 400, teamSize: 4 };
 
 let srv, url;
 before(async () => {
@@ -164,13 +164,98 @@ describe('matchmaking queue', () => {
       assert.equal(srv.lobby.matchmaker.queued(c.id), false);
     } finally { await closeAll(); }
   });
+
+  test('a seeking room takes queued individuals of the same difficulty', async () => {
+    const host = await player('seeker');
+    const filler = await player('filler');
+    try {
+      // the host gets a quick-match room alone via the queue timeout
+      await mmJoin(host, 'NORMAL');
+      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
+      srv.lobby.matchmaker.tick();
+      const found = await host.waitFor('matchmaking.found', undefined, 3000);
+      const code = found.code;
+      const st0 = await host.waitFor('room.state', (s) => s.code === code && s.quickMatch === true, 3000);
+      assert.equal(st0.seeking, false);
+      assert.equal(st0.seats.filter((s) => s && !s.isBot).length, 1);
+      // the host opens the empty seats to the queue (after adding one AI teammate by hand)
+      const ab = await host.request({ t: 'room.addBot' });
+      assert.equal(ab.t, 'ok');
+      const sk = await host.request({ t: 'matchmaking.seek', on: true });
+      assert.equal(sk.t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
+      // an individual queues and lands in the seeking room instead of a new one
+      await mmJoin(filler, 'NORMAL');
+      srv.lobby.matchmaker.tick();
+      const ff = await filler.waitFor('matchmaking.found', undefined, 3000);
+      assert.equal(ff.code, code, 'the filler joins the seeking room');
+      const st1 = await host.waitFor('room.state',
+        (s) => s.code === code && s.seats.filter((x) => x && !x.isBot).length === 2, 3000);
+      assert.equal(st1.seeking, true, 'still seeking with one empty seat left');
+      assert.equal(srv.lobby.matchmaker.queued(filler.id), false);
+    } finally { await closeAll(); }
+  });
+
+  test('seeking stops when the room fills; the host can cancel; guests cannot seek', async () => {
+    const host = await player('seeker2');
+    try {
+      await mmJoin(host, 'HARD');
+      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
+      srv.lobby.matchmaker.tick();
+      const found = await host.waitFor('matchmaking.found', undefined, 3000);
+      const code = found.code;
+      await host.waitFor('room.state', (s) => s.code === code && s.quickMatch === true, 3000);
+      // no empty seats: seeking is refused
+      for (let i = 0; i < 3; i++) assert.equal((await host.request({ t: 'room.addBot' })).t, 'ok');
+      const bad = await host.request({ t: 'matchmaking.seek', on: true });
+      assert.equal(bad.t, 'error');
+      assert.equal(bad.code, ERR.ALREADY);
+      // free one seat, seek, then cancel
+      assert.equal((await host.request({ t: 'room.removeBot', seat: 1 })).t, 'ok');
+      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
+      assert.equal((await host.request({ t: 'matchmaking.seek', on: false })).t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === code && s.seeking === false, 2000);
+      // a guest cannot seek
+      const guest = await player('guest2');
+      try {
+        assert.equal((await guest.request({ t: 'room.join', code })).t, 'ok');
+        await guest.waitFor('room.state', (s) => s.code === code && s.seats.some((x) => x && x.playerId === guest.id), 2000);
+        const nb = await guest.request({ t: 'matchmaking.seek', on: true });
+        assert.equal(nb.t, 'error');
+        assert.equal(nb.code, ERR.NOT_HOST);
+      } finally { clients.delete(guest); await guest.terminate().catch(() => {}); }
+    } finally { await closeAll(); }
+  });
+
+  test('seeking times out and the host starts by hand', async () => {
+    const host = await player('patient');
+    try {
+      await mmJoin(host, 'ABYSS');
+      await new Promise((r) => setTimeout(r, MM.queueTimeoutMs + 50));
+      srv.lobby.matchmaker.tick();
+      const found = await host.waitFor('matchmaking.found', undefined, 3000);
+      const code = found.code;
+      await host.waitFor('room.state', (s) => s.code === code, 3000);
+      assert.equal((await host.request({ t: 'matchmaking.seek', on: true })).t, 'ok');
+      await host.waitFor('room.state', (s) => s.code === code && s.seeking === true, 2000);
+      // nobody queues: after seekTimeoutMs the tick stops seeking (no auto-start)
+      await new Promise((r) => setTimeout(r, MM.seekTimeoutMs + 100));
+      srv.lobby.matchmaker.tick();
+      const st = await host.waitFor('room.state', (s) => s.code === code && s.seeking === false, 2000);
+      assert.equal(st.inMatch, false, 'no auto-start: the host starts by hand');
+    } finally { await closeAll(); }
+  });
 });
 
 describe('matchmaking protocol', () => {
   test('validateC2S accepts the new messages, rejects bad fields', () => {
     assert.equal(validateC2S({ t: 'matchmaking.join', difficulty: 'NORMAL' }), null);
     assert.equal(validateC2S({ t: 'matchmaking.leave' }), null);
+    assert.equal(validateC2S({ t: 'matchmaking.seek', on: true }), null);
     assert.ok(validateC2S({ t: 'matchmaking.join', difficulty: 'NOPE' }).startsWith('bad field'));
     assert.ok(validateC2S({ t: 'matchmaking.join' }).startsWith('bad field'));
+    assert.ok(validateC2S({ t: 'matchmaking.seek', on: 'yes' }).startsWith('bad field'));
+    assert.ok(validateC2S({ t: 'matchmaking.seek' }).startsWith('bad field'));
   });
 });
