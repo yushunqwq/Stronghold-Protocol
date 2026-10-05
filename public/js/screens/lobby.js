@@ -291,6 +291,11 @@ export function LobbyScreen() {
     identity.setEntered(false);
     store.set((s) => ({ session: { ...s.session, entered: false } }));
   };
+  // quick match (server/matchmaking.js): queue by the selected difficulty; the server forms the room
+  // and starts the match, the client just follows matchmaking.state / matchmaking.found
+  const mm = useStore((s) => s.matchmaking);
+  const startMatch = () => run('mm', () => net.request('matchmaking.join', { difficulty }));
+  const cancelMatch = () => run('mm', () => net.request('matchmaking.leave', {}));
 
   return html`<div class="screen lobby-screen">
     <header class="topbar">
@@ -321,6 +326,21 @@ export function LobbyScreen() {
         <div class="mode-cards">
           ${MODE_CARDS.map((c) => html`<${ModeCard} key=${c.id} card=${c} selected=${roomMode === c.id} onSelect=${pickMode} />`)}
         </div>
+
+        <div class="section-label"><span class="section-label__idx num">04</span>快速匹配<${MicroLabel}>QUICK MATCH<//></div>
+        <${Panel} class="mm-panel" tone="mint">
+          ${mm && mm.inQueue ? html`<div class="mm-queue">
+            <${Spinner} size="sm" label="MATCHING" />
+            <div class="mm-queue__text">
+              <b>正在匹配队友…</b>
+              <span class="t-dim">同难度队列 ${mm.waiting} 人 · 凑齐 4 人或等待超时后开局（空位由 AI 补齐）</span>
+            </div>
+            <${Button} variant="secondary" size="lg" loading=${busy === 'mm'} onClick=${cancelMatch}>取消匹配<//>
+          </div>` : html`<div class="mm-idle">
+            <div class="mm-idle__text">与在线的其他博士自动组队<span class="t-dim">按当前难度匹配 · 凑齐 4 人直接开局</span></div>
+            <${Button} variant="primary" size="lg" icon="users" loading=${busy === 'mm'} disabled=${!online} onClick=${startMatch}>开始匹配<//>
+          </div>`}
+        <//>
 
         <div class="section-label"><span class="section-label__idx num">03</span>加入同盟<${MicroLabel}>JOIN WITH ALLIANCE KEY<//></div>
         <${Panel} class="join-panel" tone="amber">

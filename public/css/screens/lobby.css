@@ -238,3 +238,16 @@
 .create-box { margin-top: .3rem; display: flex; flex-direction: column; gap: .12rem; }
 .create-box .btn--xl { height: .92rem; font-size: .32rem; letter-spacing: .3em; }
 .create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: .14rem; color: var(--text-lo); }
+
+/* ---- quick match (快速匹配, js/screens/lobby.js) ------------------------------------------------------- */
+.mm-panel .panel__body { padding: .22rem .26rem; }
+.mm-idle { display: flex; align-items: center; justify-content: space-between; gap: .3rem; }
+.mm-idle__text { display: flex; flex-direction: column; gap: .08rem; font-size: .3rem; color: var(--text-hi); }
+.mm-idle__text .t-dim { font-size: .24rem; }
+.mm-queue { display: flex; align-items: center; gap: .3rem; }
+.mm-queue__text { display: flex; flex-direction: column; gap: .08rem; flex: 1; font-size: .3rem; color: var(--text-hi); }
+.mm-queue__text .t-dim { font-size: .24rem; }
+@media (max-width: 640px) {
+  .mm-idle { flex-direction: column; align-items: stretch; }
+  .mm-queue { flex-wrap: wrap; }
+}

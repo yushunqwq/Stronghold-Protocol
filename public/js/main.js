@@ -203,6 +203,11 @@ function wireNet() {
         lastError: snap.lastError, everOnline: cur.everOnline || snap.status === 'online',
       },
     });
+    // the server drops the queue entry on disconnect: the client must not show a stale queue
+    if (snap.status !== 'online' && store.get().matchmaking) {
+      store.set({ matchmaking: null });
+      toast('连接已断开，匹配已取消', 'warn');
+    }
   });
   net.on('clock', (c) => store.set({ clock: { offset: c.offset, rtt: c.rtt, synced: c.synced } }));
   net.on('welcome', onWelcome);
@@ -234,6 +239,20 @@ function wireNet() {
   });
   net.on('m.emote', (msg) => {
     store.set((s) => ({ emotes: [...s.emotes.slice(-(EMOTE_KEEP - 1)), { seq: ++seq, playerId: msg.playerId, id: msg.id, at: Date.now() }] }));
+  });
+
+  // quick match (server/matchmaking.js): queue state follows the server; on `found` the room.state
+  // broadcast (the room was formed and its match started) routes to the game screen on its own
+  net.on('matchmaking.state', (msg) => {
+    store.set({
+      matchmaking: msg && msg.inQueue
+        ? { inQueue: true, waiting: Math.max(0, msg.waiting | 0), difficulty: typeof msg.difficulty === 'string' ? msg.difficulty : null }
+        : null,
+    });
+  });
+  net.on('matchmaking.found', () => {
+    store.set({ matchmaking: null });
+    toast('匹配成功！正在进入对局…', 'success');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.

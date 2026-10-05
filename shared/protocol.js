@@ -259,6 +259,13 @@ export const C2S = {
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
 
+  // quick match (快速匹配, server/matchmaking.js): queue by difficulty; the server forms a co-op room
+  // (AI teammates fill the empty seats) and starts its match as soon as teamSize players queue — or when
+  // the longest wait hits the timeout. `matchmaking.state { inQueue, waiting?, difficulty? }` follows the
+  // queue; `matchmaking.found { code }` fires for every formed player (room.state + match frames follow).
+  'matchmaking.join': { difficulty: (v) => DIFFICULTIES.includes(v) },
+  'matchmaking.leave': {},
+
   // match
   'g.infoReady': {},
   'g.band': { bandId: isId },
@@ -310,6 +317,9 @@ export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
+  // quick match (server/matchmaking.js): matchmaking.state { inQueue, waiting?, difficulty? } follows the
+  // queue; matchmaking.found { code } fires for every formed player (room.state + match frames follow)
+  'matchmaking.state', 'matchmaking.found',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
   'm.unitStats',
   // client-side combat (DESIGN §14): b.start { battleId, fieldId, kind, spec, authoritative, startAt, serverNow, elapsed,
