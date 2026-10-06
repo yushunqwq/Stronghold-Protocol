@@ -238,6 +238,7 @@ export function LobbyScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const mm = useStore((s) => s.matchmaking);
   const vote = useStore((s) => s.matchVote);
+  const onlineCount = useStore((s) => s.onlineCount);
   useData('config');
   const [roomMode, setRoomMode] = useState(() => {
     const m = loadPref('lobby.mode', 'coop');
@@ -321,6 +322,7 @@ export function LobbyScreen() {
       <div class="topbar__left">
         <${Button} variant="ghost" size="sm" icon="chevronLeft" onClick=${backToTitle} title="返回标题">返回<//>
         <${PingPill} ms=${conn.ping} online=${online} />
+        ${onlineCount != null && html`<span class="online-pill" title="当前在线人数"><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">在线 ${onlineCount}</span><//>`}
       </div>
       <div class="topbar__center">
         <${MicroLabel} tone="mint">SIMULATION PROTOCOL SELECT<//>
