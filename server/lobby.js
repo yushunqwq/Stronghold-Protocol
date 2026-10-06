@@ -80,7 +80,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import { ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
 import { checkLoadout } from '../shared/protocol.js';
-import { encode, isDroppable, isErrCode, sendRaw, sendSession } from './net.js';
+import { encode, isDroppable, isErrCode, send, sendRaw, sendSession } from './net.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
 import { Matchmaker } from './matchmaking.js';
@@ -255,6 +255,15 @@ export class Lobby {
   // ---------------------------------------------------------------------------------------------------
   // net.js handler interface
   // ---------------------------------------------------------------------------------------------------
+
+  /**
+   * A raw WebSocket just connected (pre-hello): push the online count immediately so the
+   * title screen shows it before the user sends hello.
+   * @param {import('./net.js').Connection} conn
+   */
+  onConnect(conn) {
+    send(conn.ws, { t: 'online.count', count: this.onlineCount() });
+  }
 
   /**
    * After `welcome`: resend room state / match state for resumed (or repeated) hellos.
