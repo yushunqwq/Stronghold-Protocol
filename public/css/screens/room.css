@@ -307,6 +307,3 @@
 
 .room-bar .btn--xl { min-width: 3.2rem; letter-spacing: .2em; }
 
-/* ---- quick-match seeking (快速匹配, js/screens/room.js) -------------------------------------------------- */
-.seek-box { display: flex; align-items: center; gap: .24rem; }
-.seek-box__text { font-size: .3rem; color: var(--text-hi); white-space: nowrap; }
