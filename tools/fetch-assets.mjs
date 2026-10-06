@@ -61,15 +61,17 @@ const HELP = `Usage: node tools/fetch-assets.mjs [options]
                     (without it such a run keeps the current manifest, lists the entries and exits 1)
   --local-spines    rewrite ${LOCAL_ENEMY_SPINES_FILE} from the enemy models extracted
                     by tools/local-extract/extract.py (public/assets/local/spine/enemy/)
+  --asset-source=S  download source: direct (default) or mirror (via gh-proxy.com,
+                    helps when raw.githubusercontent.com is unreachable, e.g. voice files)
   --help            this text`;
 
 /**
  * Parse CLI flags.
  * @param {string[]} argv
- * @returns {{concurrency:number, force:boolean, offline:boolean, dryRun:boolean, refreshIndex:boolean, prune:boolean, allowShrink:boolean, localSpines:boolean, help:boolean}}
+ * @returns {{concurrency:number, force:boolean, offline:boolean, dryRun:boolean, refreshIndex:boolean, prune:boolean, allowShrink:boolean, localSpines:boolean, assetSource:string, help:boolean}}
  */
 export function parseArgs(argv) {
-  const o = { concurrency: 16, force: false, offline: false, dryRun: false, refreshIndex: false, prune: false, allowShrink: false, localSpines: false, help: false };
+  const o = { concurrency: 16, force: false, offline: false, dryRun: false, refreshIndex: false, prune: false, allowShrink: false, localSpines: false, assetSource: 'direct', help: false };
   for (const a of argv) {
     const [k, v] = a.split('=');
     if (k === '--concurrency') o.concurrency = Math.max(1, Math.min(64, parseInt(v, 10) || 16));
@@ -80,6 +82,10 @@ export function parseArgs(argv) {
     else if (k === '--prune') o.prune = true;
     else if (k === '--allow-shrink') o.allowShrink = true;
     else if (k === '--local-spines') o.localSpines = true;
+    else if (k === '--asset-source') {
+      if (!['direct', 'mirror'].includes(v)) throw new Error(`unknown asset source: ${v} (direct|mirror)\n${HELP}`);
+      o.assetSource = v;
+    }
     else if (k === '--help' || k === '-h') o.help = true;
     else throw new Error(`unknown option ${a}\n${HELP}`);
   }
@@ -247,6 +253,7 @@ async function main() {
   const dl = new Downloader({
     root: ASSETS, ledgerPath: join(CACHE, 'assets-ledger.json'),
     concurrency: opts.concurrency, force: opts.force, log,
+    source: opts.assetSource,
   });
   await dl.loadLedger();
   const downloadErrors = opts.offline ? [] : await downloadLeaves(leaves, dl, ASSETS, 'files');
@@ -254,7 +261,7 @@ async function main() {
   // Fonts
   let fontErrors = [];
   if (!opts.offline) {
-    const fdl = new Downloader({ root: FONTS, ledgerPath: join(CACHE, 'fonts-ledger.json'), concurrency: 4, force: opts.force, log });
+    const fdl = new Downloader({ root: FONTS, ledgerPath: join(CACHE, 'fonts-ledger.json'), concurrency: 4, force: opts.force, log, source: opts.assetSource });
     await fdl.loadLedger();
     await fdl.run(fontJobs(), 'fonts');
     dl.totals.bytesDownloaded += fdl.totals.bytesDownloaded;
