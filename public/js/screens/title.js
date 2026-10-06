@@ -277,7 +277,10 @@ export function TitleScreen() {
     <${SettingsModal} open=${settingsOpen} onClose=${() => setSettingsOpen(false)} />
 
     <footer class="title-foot">
-      <span>非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有</span>
+      <div class="title-foot__left">
+        <span class="title-sponsor">本服务器不强制要求赞助，您可以向 Alipay 账户：yushun_zero@163.com 赞助，承诺所有赞助均用来续费和升级服务器</span>
+        <span>非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有</span>
+      </div>
       <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>
     </footer>
   </div>`;

@@ -253,6 +253,8 @@
 .announce-item__body p { margin: 0 0 .1rem; font-size: .16rem; line-height: 1.8; color: var(--text, #cfd8d3); }
 .announce-item__body a { color: #4da3ff; text-decoration: underline; }
 
+.title-foot__left { display: flex; flex-direction: column; gap: .04rem; }
+.title-sponsor { color: var(--text-lo); font-size: .12rem; }
 .title-foot {
   position: absolute;
   z-index: 2;
