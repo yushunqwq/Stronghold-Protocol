@@ -36,11 +36,14 @@ const announceStore = createStore({ open: false });
 
 const SEEN_KEY = 'stronghold.announce.seen';
 
-/** Latest announcement date in the list ('' when empty). */
-function latestDate() {
-  let latest = '';
-  for (const a of ANNOUNCEMENTS) if (a.date > latest) latest = a.date;
-  return latest;
+/** Hash of the current announcements content (date+title+body). */
+function contentHash() {
+  const s = JSON.stringify(ANNOUNCEMENTS.map((a) => [a.date, a.title, a.body]));
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return String(h);
 }
 
 /** Open the announcements modal. */
@@ -48,21 +51,21 @@ export function openAnnouncements() {
   announceStore.set({ open: true });
 }
 
-/** Close the announcements modal (marks current announcements as seen). */
+/** Close the announcements modal (marks current content as seen). */
 export function closeAnnouncements() {
-  try { localStorage.setItem(SEEN_KEY, latestDate()); } catch { /* ignore */ }
+  try { localStorage.setItem(SEEN_KEY, contentHash()); } catch { /* ignore */ }
   announceStore.set({ open: false });
 }
 
 /**
- * Auto-open on page load when there are announcements the user hasn't seen.
- * Call once at boot (main.js).
+ * Auto-open on page load when the announcements are new/changed since last seen
+ * (or never seen). Call once at boot (main.js).
  */
 export function maybeAutoOpenAnnouncements() {
   if (!ANNOUNCEMENTS.length) return;
-  let seen = '';
-  try { seen = localStorage.getItem(SEEN_KEY) || ''; } catch { /* ignore */ }
-  if (latestDate() > seen) openAnnouncements();
+  let seen = null;
+  try { seen = localStorage.getItem(SEEN_KEY); } catch { /* ignore */ }
+  if (seen !== contentHash()) openAnnouncements();
 }
 
 function AnnounceModal() {
