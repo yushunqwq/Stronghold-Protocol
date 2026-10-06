@@ -7,17 +7,28 @@
 import { html, Modal, Button } from './components.js';
 import { createStore, useStore } from '../store.js';
 
-/** @type {Array<{ date: string, title: string, body: string }>} */
+/** @type {Array<{ date: string, title: string, body: string }>} body is HTML. */
 export const ANNOUNCEMENTS = [
   {
     date: '2026-10-07',
-    title: 'v0.1.4 版本更新',
-    body: '已同步上游 v0.1.4 版本内容，保留同盟匹配、多数投票、在线人数、战斗倍速等自定义功能。',
-  },
-  {
-    date: '2026-10-06',
-    title: '同盟匹配投票功能上线',
-    body: '匹配人数不足时可发起投票，多数同意即可直接开始或 AI 补位开始。发起人可随时取消投票。',
+    title: '服务器公告',
+    body: `<h4>服务说明</h4>
+<p>本站服务器带宽很小，无法保证晚高峰加载速度<br>
+本站纯公益，可能不定时停服更新，对此造成的不便请见谅<br>
+闪断对局不中断的功能有考虑开发</p>
+<h4>近期更新内容</h4>
+<p>同步上游 0.1.4 版本<br>
+增加匹配功能<br>
+增加倍速切换功能<br>
+在线人数显示<br>
+公告功能</p>
+<h4>反馈</h4>
+<p>B 站：<a href="https://space.bilibili.com/545653981" target="_blank" rel="noopener">Yushun_Zero</a></p>
+<h4>赞助</h4>
+<p>不强制要求赞助，您可以向 Alipay 账户：yushun_zero@163.com 赞助<br>
+承诺所有赞助均用来续费和升级服务器</p>
+<h4>鸣谢</h4>
+<p>感谢 @Ausevay 开发本项目 <a href="https://space.bilibili.com/429961520" target="_blank" rel="noopener">https://space.bilibili.com/429961520</a></p>`,
   },
 ];
 
@@ -65,7 +76,7 @@ function AnnounceModal() {
             <b>${a.title}</b>
             <span class="t-lo">${a.date}</span>
           </div>
-          <p>${a.body}</p>
+          <div class="announce-item__body" dangerouslySetInnerHTML=${{ __html: a.body }}></div>
         </article>
       `)}
     </div>
