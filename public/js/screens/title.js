@@ -182,6 +182,7 @@ const STATUS_TEXT = {
 export function TitleScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
+  const onlineCount = useStore((s) => s.onlineCount);
   const [name, setName] = useState(() => store.get().me.name || identity.loadName() || '');
   const assetsSettled = useData('assets');
   const assets = data.get('assets');
@@ -257,6 +258,7 @@ export function TitleScreen() {
           <span class=${`status-dot ${dotClass}`}></span>
           <span>${STATUS_TEXT[conn.status] || conn.status}</span>
           ${conn.status === 'online' ? html`<${PingPill} ms=${conn.ping} />` : null}
+          ${conn.status === 'online' && onlineCount != null ? html`<span class="online-pill" title="当前在线人数"><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">在线 ${onlineCount}</span><//>` : null}
           <${GuideButton} class="title-guide" />
           <${FullscreenButton} class="title-fs" />
         </div>

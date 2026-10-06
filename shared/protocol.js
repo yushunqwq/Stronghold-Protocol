@@ -328,6 +328,8 @@ export const S2C = [
   // quick match (server/matchmaking.js): matchmaking.state { inQueue, waiting?, difficulty? } follows the
   // queue; matchmaking.found { code } fires for every seated player (room.state follows)
   'matchmaking.state', 'matchmaking.found',
+  // online.count { count } — current connected-session count, broadcast on connect/disconnect + periodic
+  'online.count',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
   'm.unitStats',
   // client-side combat (DESIGN §14): b.start { battleId, fieldId, kind, spec, authoritative, startAt, serverNow, elapsed,

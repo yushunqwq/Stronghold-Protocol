@@ -248,6 +248,11 @@ function wireNet() {
     store.set({ matchmaking: null, matchVote: null });
     toast('匹配成功！正在开始模拟…', 'success');
   });
+  // online player count for the lobby top bar
+  net.on('online.count', (msg) => {
+    const n = msg && Number.isFinite(msg.count) ? Math.max(0, Math.floor(msg.count)) : null;
+    if (n !== store.get().onlineCount) store.set({ onlineCount: n });
+  });
   // startNow vote: show the ballot; on close, toast the result (the match starts via found)
   net.on('matchmaking.voteState', (msg) => {
     store.set({

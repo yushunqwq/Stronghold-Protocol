@@ -754,6 +754,25 @@
 .ping--medium { --pc: var(--amber); }
 .ping--high { --pc: var(--red-premium); }
 .ping--off { --pc: var(--text-dim); }
+/* online player count pill (lobby topbar, next to the ping pill) */
+.online-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .05rem;
+  height: .32rem;
+  padding: 0 .14rem 0 .11rem;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .5);
+  border: 1px solid var(--line);
+  color: var(--mint-400);
+  font-family: var(--font-num);
+  font-size: .16rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.online-pill__icon { width: .15rem; height: .15rem; }
 
 /* ---- difficulty tag ---------------------------------------------------------------------------------- */
 .dtag { --d-color: var(--amber); display: inline-flex; align-items: center; gap: .06rem; color: var(--d-color); font-weight: 700; font-size: .18rem; letter-spacing: .04em; white-space: nowrap; }
