@@ -246,11 +246,11 @@
 .title-conn .online-pill__icon { width: .13rem; height: .13rem; }
 .title-actions { display: flex; align-items: center; justify-content: center; gap: .12rem; margin-top: .08rem; }
 .announce-list { display: flex; flex-direction: column; gap: .16rem; }
-.announce-item { border-left: 2px solid var(--accent, #17f9b7); padding-left: .12rem; }
-.announce-item__head { display: flex; align-items: baseline; justify-content: space-between; gap: .1rem; margin-bottom: .04rem; }
-.announce-item__body h4 { margin: .12rem 0 .04rem; font-size: .15rem; color: var(--text-hi, #fff); }
+.announce-list { display: flex; flex-direction: column; gap: .16rem; }
+.announce-item { padding-left: 0; }
+.announce-item__body h4 { margin: .14rem 0 .06rem; font-size: .17rem; font-weight: 600; color: var(--text-hi, #fff); }
 .announce-item__body h4:first-child { margin-top: 0; }
-.announce-item__body p { margin: 0 0 .08rem; font-size: .14rem; line-height: 1.7; color: var(--text, #cfd8d3); }
+.announce-item__body p { margin: 0 0 .1rem; font-size: .16rem; line-height: 1.8; color: var(--text, #cfd8d3); }
 .announce-item__body a { color: #4da3ff; text-decoration: underline; }
 
 .title-foot {
