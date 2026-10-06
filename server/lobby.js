@@ -216,6 +216,23 @@ export class Lobby {
     this.limitLog = { at: -Infinity, suppressed: 0 };
     /** quick-match queue (server/matchmaking.js): groups players by difficulty, forms rooms on its own timer */
     this.matchmaker = new Matchmaker({ lobby: this, now, options: options.matchmaking });
+    // online count: broadcast on connect/disconnect + every 30 s so the lobby top bar stays fresh.
+    // unref'd so tests (which construct Lobby directly) can still exit.
+    this._onlineTimer = setInterval(() => this.broadcastOnline(), 30000);
+    if (this._onlineTimer.unref) this._onlineTimer.unref();
+  }
+
+  /** Currently connected sessions (the lobby "在线" number). */
+  onlineCount() {
+    let n = 0;
+    for (const s of this.registry.all()) if (s.connected) n++;
+    return n;
+  }
+
+  /** Push the current online count to every connected session. */
+  broadcastOnline() {
+    const msg = { t: 'online.count', count: this.onlineCount() };
+    for (const s of this.registry.all()) if (s.connected) sendSession(s, msg);
   }
 
   /** @param {string} code @returns {Room | null} */
@@ -245,7 +262,7 @@ export class Lobby {
    * @param {{ resumed: boolean, repeat: boolean }} info
    */
   onHello(session, { resumed, repeat }) {
-    if (!resumed && !repeat) return;
+    if (!resumed && !repeat) { this.broadcastOnline(); return; }
     const room = this.roomOf(session);
     if (!room) {
       if (session.notice) {
@@ -309,6 +326,7 @@ export class Lobby {
   onDisconnect(session) {
     this.clearResync(session.playerId); // the next resume resyncs immediately
     this.matchmaker.onDisconnect(session); // a blip cancels matchmaking
+    this.broadcastOnline(); // net.js already marked session.connected = false
     const room = this.roomOf(session);
     // a solo run may be resumed within singleReconnectTime (24 h); everything else keeps the registry's window
     session.resumeWindowMs = room && room.match && room.mode === 'solo' ? this.soloResumeWindowMs() : null;
