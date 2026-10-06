@@ -244,7 +244,7 @@
 .title-conn .ping { height: .26rem; font-size: .15rem; }
 .title-conn .online-pill { height: .26rem; font-size: .14rem; }
 .title-conn .online-pill__icon { width: .13rem; height: .13rem; }
-.title-actions { display: flex; align-items: center; justify-content: center; gap: .12rem; margin-top: .08rem; }
+.title-actions { display: flex; align-items: center; justify-content: center; gap: .12rem; margin-top: .02rem; }
 .announce-list { display: flex; flex-direction: column; gap: .16rem; }
 .announce-list { display: flex; flex-direction: column; gap: .16rem; }
 .announce-item { padding-left: 0; }
