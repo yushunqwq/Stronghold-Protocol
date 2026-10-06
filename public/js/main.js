@@ -42,7 +42,7 @@ import { GameScreen } from './screens/game.js';
 import { installAudio } from './audio.js';
 import { settingsStore } from './ui/settings.js';
 import { GuideHost } from './ui/guide.js';
-import { AnnounceHost } from './ui/announce.js';
+import { AnnounceHost, maybeAutoOpenAnnouncements } from './ui/announce.js';
 import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { installLoadoutSync } from './ui/loadoutSync.js';
@@ -390,6 +390,8 @@ async function boot() {
   await Promise.all([waitForFonts(1200), connectWhenReady]);
   const root = document.getElementById('app');
   render(html`<${App} />`, root);
+  // Auto-open announcements on first load / when there are new ones.
+  try { maybeAutoOpenAnnouncements(); } catch (err) { console.warn('[app] announce auto-open failed', err); }
 
   const splash = document.getElementById('boot');
   if (splash) {

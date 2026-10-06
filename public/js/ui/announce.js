@@ -23,14 +23,35 @@ export const ANNOUNCEMENTS = [
 
 const announceStore = createStore({ open: false });
 
+const SEEN_KEY = 'stronghold.announce.seen';
+
+/** Latest announcement date in the list ('' when empty). */
+function latestDate() {
+  let latest = '';
+  for (const a of ANNOUNCEMENTS) if (a.date > latest) latest = a.date;
+  return latest;
+}
+
 /** Open the announcements modal. */
 export function openAnnouncements() {
   announceStore.set({ open: true });
 }
 
-/** Close the announcements modal. */
+/** Close the announcements modal (marks current announcements as seen). */
 export function closeAnnouncements() {
+  try { localStorage.setItem(SEEN_KEY, latestDate()); } catch { /* ignore */ }
   announceStore.set({ open: false });
+}
+
+/**
+ * Auto-open on page load when there are announcements the user hasn't seen.
+ * Call once at boot (main.js).
+ */
+export function maybeAutoOpenAnnouncements() {
+  if (!ANNOUNCEMENTS.length) return;
+  let seen = '';
+  try { seen = localStorage.getItem(SEEN_KEY) || ''; } catch { /* ignore */ }
+  if (latestDate() > seen) openAnnouncements();
 }
 
 function AnnounceModal() {
