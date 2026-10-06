@@ -34,7 +34,7 @@ export function closeAnnouncements() {
 }
 
 function AnnounceModal() {
-  const open = useStore(announceStore, (s) => s.open);
+  const open = useStore((s) => s.open, Object.is, announceStore);
   return html`<${Modal} open=${open} onClose=${closeAnnouncements} title="公告" micro="ANNOUNCEMENTS" width="7rem">
     <div class="announce-list">
       ${ANNOUNCEMENTS.length === 0 ? html`<p class="t-lo">暂无公告</p>` : ANNOUNCEMENTS.map((a, i) => html`
