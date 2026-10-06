@@ -244,6 +244,11 @@
 .title-conn .ping { height: .26rem; font-size: .15rem; }
 .title-conn .online-pill { height: .26rem; font-size: .14rem; }
 .title-conn .online-pill__icon { width: .13rem; height: .13rem; }
+.title-actions { display: flex; align-items: center; justify-content: center; gap: .12rem; margin-top: .08rem; }
+.announce-list { display: flex; flex-direction: column; gap: .16rem; }
+.announce-item { border-left: 2px solid var(--accent, #17f9b7); padding-left: .12rem; }
+.announce-item__head { display: flex; align-items: baseline; justify-content: space-between; gap: .1rem; margin-bottom: .04rem; }
+.announce-item p { margin: 0; font-size: .14rem; line-height: 1.6; color: var(--text, #cfd8d3); }
 
 .title-foot {
   position: absolute;

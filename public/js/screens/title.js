@@ -12,6 +12,7 @@ import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION } from '../../../shared/constants.js';
 import { html, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
+import { AnnounceButton } from '../ui/announce.js';
 import { toast } from '../ui/toasts.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual } from '../store.js';
@@ -261,8 +262,11 @@ export function TitleScreen() {
           <span class=${`status-dot ${dotClass}`}></span>
           <span>${STATUS_TEXT[conn.status] || conn.status}</span>
           ${conn.status === 'online' ? html`<${PingPill} ms=${conn.ping} />` : null}
-          ${conn.status === 'online' && onlineCount != null ? html`<span class="online-pill" title="当前在线人数"><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">在线 ${onlineCount}</span><//>` : null}
+          ${onlineCount != null ? html`<span class="online-pill" title="当前在线人数"><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">在线 ${onlineCount}</span><//>` : null}
+        </div>
+        <div class="title-actions">
           <${GuideButton} class="title-guide" />
+          <${AnnounceButton} class="title-announce" />
           <button type="button" class="title-settings fsbtn tapx" aria-label="设置" title="设置"
             onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
           <${FullscreenButton} class="title-fs" />
