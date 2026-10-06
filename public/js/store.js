@@ -87,6 +87,8 @@ export const initialState = Object.freeze({
   matchmaking: null,
   // startNow vote: null when no vote, else { withBots, initiatorName, agree, disagree, total, needed, voted }
   matchVote: null,
+  // online player count from the server (online.count broadcast), null until first push
+  onlineCount: null,
 });
 
 /** The app-wide store singleton. */
