@@ -9,7 +9,7 @@ import { createStore, useStore } from '../store.js';
 
 /** @type {Array<{ tag: string, text: string }>} */
 export const NOTICES = [
-  { tag: '维护通知', text: '已发现多人游戏联防阶段时，地图无法正常加载，等待上游修复' },
+  { tag: '维护通知', text: '正在合并上游更新，预计不晚于23：00推送更新' },
 ];
 
 const noticeStore = createStore({ visible: false });
