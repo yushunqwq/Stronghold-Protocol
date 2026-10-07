@@ -17,16 +17,14 @@ export const ANNOUNCEMENTS = [
 本站纯公益，可能不定时停服更新，对此造成的不便请见谅<br>
 闪断对局不中断的功能有考虑开发</p>
 <h4>近期更新内容</h4>
-<p>同步上游 0.1.4 版本<br>
-增加匹配功能<br>
-增加倍速切换功能<br>
-在线人数显示<br>
-公告功能</p>
+<p>同步上游 0.2.0 版本<br>
+增加维护通知</p>
 <h4>反馈</h4>
 <p>B 站：<a href="https://space.bilibili.com/545653981" target="_blank" rel="noopener">Yushun_Zero</a></p>
 <h4>赞助</h4>
-<p>不强制要求赞助，您可以向 Alipay 账户：yushun_zero@163.com 赞助<br>
-承诺所有赞助均用来续费和升级服务器</p>
+<p>本服务器不强制要求赞助，自愿扫码赞助</p>
+<p><img src="https://img.chiruno.com/uploads/2026/10/18dc38126e0cd343434.webp" alt="赞助二维码" style="max-width: 2.4rem; width: 100%; border-radius: .06rem;" /></p>
+<p>承诺所有赞助均用来续费和升级服务器</p>
 <h4>鸣谢</h4>
 <p>感谢 @Ausevay 开发本项目 <a href="https://space.bilibili.com/429961520" target="_blank" rel="noopener">https://space.bilibili.com/429961520</a></p>`,
   },
