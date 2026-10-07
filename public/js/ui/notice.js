@@ -48,6 +48,7 @@ function NoticeBanner() {
   if (!visible || !NOTICES.length) return null;
   const n = NOTICES[0];
   return html`<div class="notice-banner" role="alert">
+    <div class="notice-banner__stripe" aria-hidden="true"></div>
     <span class="notice-banner__tag">${n.tag}</span>
     <span class="notice-banner__icon">⏳</span>
     <span class="notice-banner__text">${n.text}</span>
