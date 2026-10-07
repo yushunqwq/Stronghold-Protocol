@@ -48,6 +48,7 @@ import { installAudio } from './audio.js';
 import { settingsStore } from './ui/settings.js';
 import { GuideHost } from './ui/guide.js';
 import { AnnounceHost, maybeAutoOpenAnnouncements } from './ui/announce.js';
+import { NoticeHost, maybeShowNotice } from './ui/notice.js';
 import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
@@ -330,6 +331,7 @@ function App() {
     <${UiHosts} />
     <${GuideHost} />
     <${AnnounceHost} />
+    <${NoticeHost} />
     <${LoadoutHost} />
   </div>`;
 }
@@ -406,6 +408,8 @@ async function boot() {
   render(html`<${App} />`, root);
   // Auto-open announcements on first load / when there are new ones.
   try { maybeAutoOpenAnnouncements(); } catch (err) { console.warn('[app] announce auto-open failed', err); }
+  // Show the top notice banner when there is one not yet dismissed.
+  try { maybeShowNotice(); } catch (err) { console.warn('[app] notice banner failed', err); }
 
   const splash = document.getElementById('boot');
   if (splash) {
