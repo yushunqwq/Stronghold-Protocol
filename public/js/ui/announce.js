@@ -17,8 +17,7 @@ export const ANNOUNCEMENTS = [
 本站纯公益，可能不定时停服更新，对此造成的不便请见谅<br>
 闪断对局不中断的功能有考虑开发</p>
 <h4>近期更新内容</h4>
-<p>同步上游 0.2.0 版本<br>
-增加维护通知</p>
+<p>同步上游 0.2.1 版本</p>
 <h4>反馈</h4>
 <p>B 站：<a href="https://space.bilibili.com/545653981" target="_blank" rel="noopener">Yushun_Zero</a></p>
 <h4>赞助</h4>
