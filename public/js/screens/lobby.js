@@ -16,6 +16,7 @@ import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_S
 import { html, Button, Icon, MicroLabel, Panel, TextField, PingPill, AvatarFrame, Tooltip, Spinner, DifficultyIcon, doctorNo } from '../ui/components.js';
 import { toast, toastError } from '../ui/toasts.js';
 import { GuideButton } from '../ui/guide.js';
+import { AnnounceButton } from '../ui/announce.js';
 import { LoadoutButton } from './loadout.js';
 import { net, identity } from '../net.js';
 import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
@@ -82,11 +83,16 @@ const MODE_CARDS = [
     desc: N_('与至多 {n} 名博士组成同盟，共享干员池，联防协作抵御敌潮。'), params: { n: MAX_SEATS - 1 },
     points: [N_('1–{n} 名博士 · 可由 AI 队友补位'), N_('联防阶段 · 最终攻势合并生命值')], pointParams: { n: MAX_SEATS },
   },
+  {
+    id: 'quick', name: N_('同盟匹配'), en: 'ALLIANCE MATCH', icon: 'signal',
+    desc: N_('匹配同难度的队友，凑齐 4 名博士后直接开始模拟。'),
+    points: [N_('仅匹配主动搜寻的真人玩家'), N_('可随时取消 · 人不足可 AI 补位')],
+  },
 ];
 
 /**
  * Text for a difficulty card, preferring data/config.json.
- * @param {'solo'|'coop'} roomMode
+ * @param {'solo'|'coop'|'quick'} roomMode
  * @param {string} difficulty
  * @returns {{ code: string, desc: string, effects: string[], rounds: number, hidden: boolean, stageNote: string }}
  */
@@ -239,8 +245,14 @@ function DifficultyCard({ roomMode, difficulty, selected, onSelect }) {
 export function LobbyScreen() {
   const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
+  const mm = useStore((s) => s.matchmaking);
+  const vote = useStore((s) => s.matchVote);
+  const onlineCount = useStore((s) => s.onlineCount);
   useData('config');
-  const [roomMode, setRoomMode] = useState(() => (loadPref('lobby.mode', 'coop') === 'solo' ? 'solo' : 'coop'));
+  const [roomMode, setRoomMode] = useState(() => {
+    const m = loadPref('lobby.mode', 'coop');
+    return m === 'solo' || m === 'quick' ? m : 'coop';
+  });
   const [difficulty, setDifficulty] = useState(() => {
     const d = loadPref('lobby.difficulty', 'FUNNY');
     return DIFFICULTIES.includes(d) ? d : 'FUNNY';
@@ -268,7 +280,21 @@ export function LobbyScreen() {
       if (alive.current) setBusy(null);
     }
   };
-  const create = () => run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
+  // alliance match (server/matchmaking.js): the 同盟匹配 card joins the personal queue
+  // (matchmaking.join); the server forms a 4-human team and starts its match directly.
+  const isQuick = roomMode === 'quick';
+  const create = () => isQuick
+    ? run('create', () => net.request('matchmaking.join', { difficulty }))
+    : run('create', () => net.request('room.create', { mode: roomMode, difficulty }));
+  const cancelMatch = () => run('cancel', () => net.request('matchmaking.leave', {}));
+  // tired of waiting: the queued group enters one room and starts at once —
+  // directly (short-handed) or with AI teammates filling the empty seats
+  const startNow = (withBots) => run(withBots ? 'startNowBots' : 'startNow', () => net.request('matchmaking.startNow', { withBots }));
+  const castVote = (agree) => run(agree ? 'voteYes' : 'voteNo', () => net.request('matchmaking.vote', { agree }));
+  const cancelVote = () => run('voteCancel', () => net.request('matchmaking.voteCancel', {}));
+
+  // alliance match: while queued, the create box becomes the matching status with a cancel button
+  const matching = mm && mm.inQueue;
   const join = (c = code) => {
     // `onClick=${join}` hands the click EVENT as the first argument, and a default parameter only applies to
     // `undefined` — codeArg keeps an event target out of the key and falls back to the input field
@@ -305,12 +331,14 @@ export function LobbyScreen() {
       <div class="topbar__left">
         <${Button} variant="ghost" size="sm" icon="chevronLeft" onClick=${backToTitle} title=${t('返回标题')}>${t('返回')}<//>
         <${PingPill} ms=${conn.ping} online=${online} />
+        ${onlineCount != null && html`<span class="online-pill" title=${t('当前在线人数')}><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">${t('在线')} ${onlineCount}</span><//>`}
       </div>
       <div class="topbar__center">
         <${MicroLabel} tone="mint">SIMULATION PROTOCOL SELECT<//>
         <h1 class="topbar__title">${t('选择模拟协议')}</h1>
       </div>
       <div class="topbar__right">
+        <${AnnounceButton} class="lobby-announce" variant="secondary" />
         <${GuideButton} class="lobby-guide" variant="secondary" label=${t('玩法说明')} />
         <${LoadoutButton} from="lobby" size="sm" class="lobby-loadout" label=${t('干员调配')} />
         <div class="me-chip">
@@ -356,16 +384,75 @@ export function LobbyScreen() {
           ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode=${roomMode} difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} />`)}
         </div>
         <div class="create-box">
-          <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
-            <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
-              ${roomMode === 'solo' ? t('开始独立模拟') : t('创建同盟')}
+          ${matching ? html`
+            ${vote ? html`
+              <div class="vote-box">
+                <div class="vote-box__title">
+                  <${Icon} name="vote" />
+                  <span>${vote.initiator === me.playerId ? t('你发起投票') : t('{name} 发起投票', { name: vote.initiatorName })}：${vote.withBots ? t('AI 补位开始') : t('直接开始')}</span>
+                </div>
+                <div class="vote-box__progress">
+                  <span class="t-mint">${t('同意')} <span class="num">${vote.agree}</span></span>
+                  <span class="t-dim"> / </span>
+                  <span class="t-orange">${t('拒绝')} <span class="num">${vote.disagree}</span></span>
+                  <span class="t-dim">${t('（需 {needed} 票通过，共 {total} 人）', { needed: vote.needed, total: vote.total })}</span>
+                </div>
+                ${vote.initiator === me.playerId ? html`
+                  <div class="match-start-row">
+                    <${Button} variant="secondary" size="lg" block=${true} icon="hourglass" disabled=${true}>
+                      ${t('等待其他玩家回应')}
+                    <//>
+                    <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${cancelVote}>
+                      ${t('取消投票')}
+                    <//>
+                  </div>
+                ` : html`
+                  <div class="match-start-row">
+                    <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => castVote(true)}>
+                      ${t('同意')}
+                    <//>
+                    <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => castVote(false)}>
+                      ${t('拒绝')}
+                    <//>
+                  </div>
+                `}
+              </div>
+            ` : html`
+              <div class="match-start-row">
+                <${Tooltip} block=${true} text=${online ? t('以当前匹配到的博士直接开局（人数不足，不补 AI）') : t('正在连接服务器…')}>
+                  <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
+                    ${t('直接开始')}
+                  <//>
+                <//>
+                <${Tooltip} block=${true} text=${online ? t('AI 队友补齐空位至 4 人后开局') : t('正在连接服务器…')}>
+                  <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
+                    ${t('AI 补位开始')}
+                  <//>
+                <//>
+              </div>
+            `}
+            <div class="create-box__hint">
+              ${online
+                ? html`<span><${Spinner} size="sm" /> ${t('匹配中 · 已有 {waiting} / 4 名博士', { waiting: mm.waiting })}</span>`
+                : html`<${Spinner} size="sm" label="CONNECTING" />`}
+            </div>
+            <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
+              <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
+                ${t('取消匹配')}
+              <//>
             <//>
-          <//>
-          <div class="create-box__hint">
-            ${online
-              ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : t('创建后可邀请好友或添加 AI 队友')}</span>`
-              : html`<${Spinner} size="sm" label="CONNECTING" />`}
-          </div>
+          ` : html`
+            <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
+              <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${create}>
+                ${roomMode === 'solo' ? t('开始独立模拟') : isQuick ? t('开始匹配') : t('创建同盟')}
+              <//>
+            <//>
+            <div class="create-box__hint">
+              ${online
+                ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : isQuick ? t('同难度 · 可 AI 补位') : t('创建后可邀请好友或添加 AI 队友')}</span>`
+                : html`<${Spinner} size="sm" label="CONNECTING" />`}
+            </div>
+          `}
         </div>
       </section>
     </div>

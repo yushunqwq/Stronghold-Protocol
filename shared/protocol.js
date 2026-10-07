@@ -339,6 +339,21 @@ export const C2S = {
   // 自选编队 (0.2.0 DIY): the player's DIY slot picks; stored per session / seat like room.ownership (a match takes the
   // picks its seat had when it started; during a match they are stored for the next one: ROOM_STARTED)
   'room.diy': { picks: isDiyPicks },
+  // alliance match (同盟匹配, server/lobby.js + server/matchmaking.js): the 同盟匹配 card joins a
+  // personal queue (`matchmaking.join { difficulty }`); when 4 real players of the same difficulty are
+  // queued, the server seats them in a fresh co-op room and starts its match immediately — no room
+  // lobby, no AI teammates. `matchmaking.state { inQueue, waiting?, difficulty? }` follows the queue;
+  // `matchmaking.found { code }` fires when the team is seated (room.state with inMatch follows).
+  'matchmaking.join': { difficulty: (v) => DIFFICULTIES.includes(v) },
+  'matchmaking.leave': {},
+  // the queued group is tired of waiting: they enter one room and the match starts at once.
+  // withBots fills the empty seats with AI teammates; without, the humans play short-handed.
+  // With 2+ queued, startNow opens a majority vote (initiator auto-agrees); matchmaking.vote casts a ballot.
+  'matchmaking.startNow': { withBots: (v) => typeof v === 'boolean' },
+  'matchmaking.vote': { agree: (v) => typeof v === 'boolean' },
+  // only the vote initiator can cancel it
+  'matchmaking.voteCancel': {},
+
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
@@ -397,6 +412,11 @@ export const C2S = {
 export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
+  // quick match (server/matchmaking.js): matchmaking.state { inQueue, waiting?, difficulty? } follows the
+  // queue; matchmaking.found { code } fires for every seated player (room.state follows)
+  'matchmaking.state', 'matchmaking.found',
+  // online.count { count } — current connected-session count, broadcast on connect/disconnect + periodic
+  'online.count',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)
   'm.unitStats',

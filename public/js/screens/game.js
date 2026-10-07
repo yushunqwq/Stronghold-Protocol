@@ -174,6 +174,7 @@ function MatchScreen() {
   const [emoteOpen, setEmoteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  const [speedMul, setSpeedMulState] = useState(() => (battleRunner ? battleRunner.speedMul() : 1)); // client 2× toggle
   const [drag, setDrag] = useState(null);                // { uid, kind, id } while dragging a piece
   const [facing, setFacing] = useState(null);            // direction step: { uid, piece, row, col, grid, name }
   const [sel, setSel] = useState(null);                  // tapped own piece: { uid }
@@ -424,7 +425,8 @@ function MatchScreen() {
     const side = field.prep && (field.side === 'L' || field.side === 'R') ? field.side
       : sides && sides[myId] ? sides[myId] : members.length > 1 && members.indexOf(myId) === 1 ? 'R' : 'L';
     // local simulation (client-side combat) feeds a frame per animation frame: no network jitter buffer
-    view.raw?.setLocalFeed?.({ on: !!field.local, speed: field.speed });
+    const effSpeed = (Number(field.speed) > 0 ? Number(field.speed) : 2) * (battleRunner ? battleRunner.speedMul() : 1);
+    view.raw?.setLocalFeed?.({ on: !!field.local, speed: effSpeed });
     setLayer('ALL');
     // a lone player's boss field (solo modes, the odd player of a co-op Final Assault: the `_s` templates route every
     // enemy to the left objective) is framed on its own half like the ‹ › half view; pairs start on 全景
@@ -955,6 +957,19 @@ function MatchScreen() {
     setReplace(null);
     try { cur.resolve(Number.isInteger(uid) ? uid : null); } catch { /* ignore */ }
   }, []);
+
+  // client 2× speed toggle (top-right): scales the local battle sim; the render interpolation
+  // follows with the new effective speed. Purely client-side: the sim is tick-deterministic and
+  // reports/b.result carry game time, so the server accepts the faster run.
+  const toggleSpeed = useCallback(() => {
+    if (!battleRunner) return;
+    const next = battleRunner.setSpeedMul(speedMulRef.current >= 2 ? 1 : 2);
+    setSpeedMulState(next);
+    const eff = (Number(field?.speed) > 0 ? Number(field.speed) : 2) * next;
+    view?.raw?.setLocalFeed?.({ on: !!field?.local, speed: eff });
+  }, [field, view]);
+  const speedMulRef = useRef(speedMul);
+  speedMulRef.current = speedMul;
   const openReplaceRef = useRef(null);
   openReplaceRef.current = (request) => new Promise((resolve) => {
     if (replaceRef.current) { try { replaceRef.current.resolve(null); } catch { /* ignore */ } }
@@ -1322,7 +1337,8 @@ function MatchScreen() {
         readyBusy=${readyBusy} readyCount=${readyCount} playerCount=${solo ? 1 : aliveCount}
         pen=${pen} penAvail=${penAvail} onPen=${togglePen} config=${gd.config} frozenAt=${frozenAt}
         pause=${canPause || paused ? { show: canPause, paused, busy: pauseBusy, onToggle: () => togglePause(!paused) } : null}
-        live=${liveLpNow} spectator=${spectator} />
+        live=${liveLpNow} spectator=${spectator}
+        speed=${combat && field?.local ? { mul: speedMul, onToggle: toggleSpeed } : null} />
 
       <div class="gm__bonds">
         <button type="button" class="bonds-toggle" aria-expanded=${!bondsCollapsed} aria-controls="match-bond-strip"

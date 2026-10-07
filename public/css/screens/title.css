@@ -250,6 +250,17 @@
 .title-lang.lang-select select { height: .3rem; font-size: .14rem; }
 html[data-script="alphabetic"] .title-login .btn--xl { letter-spacing: .3em; }
 .title-conn .ping { height: .26rem; font-size: .15rem; }
+.title-conn .online-pill { height: .26rem; font-size: .14rem; }
+.title-conn .online-pill__icon { width: .13rem; height: .13rem; }
+.title-actions { display: flex; align-items: center; justify-content: center; gap: .12rem; margin-top: .02rem; }
+.announce-list { display: flex; flex-direction: column; gap: .16rem; }
+.announce-item { padding-left: 0; }
+.announce-item__body h4 { margin: .14rem 0 .06rem; font-size: .17rem; font-weight: 600; color: var(--text-hi, #fff); }
+.announce-item__body h4:first-child { margin-top: 0; }
+.announce-item__body p { margin: 0 0 .1rem; font-size: .16rem; line-height: 1.8; color: var(--text, #cfd8d3); }
+.announce-item__body a { color: #4da3ff; text-decoration: underline; }
+.title-foot__left { display: flex; flex-direction: column; gap: .04rem; }
+.title-sponsor { color: var(--text-lo); font-size: .12rem; }
 
 .title-foot {
   position: absolute;
