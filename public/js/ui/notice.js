@@ -8,7 +8,9 @@ import { html } from './components.js';
 import { createStore, useStore } from '../store.js';
 
 /** @type {Array<{ tag: string, text: string }>} */
-export const NOTICES = [];
+export const NOTICES = [
+  { tag: '维护通知', text: '服务器已更新到 0.2.0 版本' },
+];
 
 const noticeStore = createStore({ visible: false });
 
