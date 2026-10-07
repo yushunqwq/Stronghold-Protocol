@@ -50,7 +50,7 @@ function NoticeBanner() {
   return html`<div class="notice-banner" role="alert">
     <div class="notice-banner__stripe" aria-hidden="true"></div>
     <span class="notice-banner__tag">${n.tag}</span>
-    <span class="notice-banner__icon">⏳</span>
+    <span class="notice-banner__icon">⚠️</span>
     <span class="notice-banner__text">${n.text}</span>
     <button type="button" class="notice-banner__close" aria-label="关闭" onClick=${dismissNotice}>✕</button>
   </div>`;
