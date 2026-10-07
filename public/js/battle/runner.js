@@ -55,9 +55,9 @@
 //                           0.1.0). Read-only: it takes the stats the sim computed last (`unit._s`) and the range grid it
 //                           keeps, and never makes the unit recompute them, so looking never changes the battle's floats.
 //   battleRunner.unitIdOf(uid, ownerId, fieldId?) → the id of an own board piece's unit in that battle | null
-//   battleRunner.ownerOps(ownerId, fieldId?) → [{ kind: 'op', ownerId, defId, items? }] that player's operators in the
-//                           battle on screen with their equipment (a teammate's bond popup: the members in play, DESIGN
-//                           §20.15, 变形同构体 wearers included) | []
+//   battleRunner.ownerOps(ownerId, fieldId?) → [{ kind: 'op', ownerId, defId, items?, standInFor? }] that player's
+//                           operators in the battle on screen with their equipment (a teammate's bond popup: the members in
+//                           play, DESIGN §20.15, 变形同构体 wearers included; a 补位 stand-in names the replaced charId) | []
 //
 // createBattleRunner(deps) builds an instance with injectable net / store / clock / frame scheduler / sim loader
 // (test/match/runner.test.js drives it under Node).
@@ -105,7 +105,7 @@ export function compactHeld(list) {
   return list.filter((x, i) => (x[0] === 'status' ? last.get(`s:${x[1]}:${x[2]}`) === i : x[0] === 'skill' ? last.get(`k:${x[1]}`) === i : true));
 }
 /** Data files the simulation reads (DataSource + content/support gameData()). */
-export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects']);
+export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups']);
 
 /** Request failures after which a b.result counts as never delivered (re-sent on resume / b.start). */
 export const LOST_RESULT_CODES = Object.freeze(['DISCONNECTED', 'OFFLINE', 'TIMEOUT']);
@@ -195,10 +195,10 @@ export function createBattleRunner(deps) {
   let lastPool = null;
   /** solo pause: the runner clock's instant when m.public.paused turned true (null while running) */
   let pausedAt = null;
-  /** client 2× toggle: multiplies every local battle's sim speed (1 = normal, 2 = double) */
-  let speedMul = 1;
   /** a normal field's leak count (or a battle's bond layers) changed since the last publishState() */
   let leaksDirty = false;
+  /** client 2× toggle: multiplies every local battle's sim speed (1 = normal, 2 = double) */
+  let speedMul = 1;
   const stats = { ticks: 0, stepMs: 0, maxFrameMs: 0, catchups: 0, errors: 0, battles: 0, frames: 0 };
   /** Hidden-tab backlog tuple → the game time it was drained at (emitFrame batches the backlog by it). */
   const heldAt = new WeakMap();
@@ -454,6 +454,9 @@ export function createBattleRunner(deps) {
       } catch (err) { console.warn('[runner] result failed', err); }
       if (result) {
         e.result = result;
+        // the view answers with the settlement voice of this battle (screens/game.js → audio.voice result*): the
+        // compact result carries the leaks and the kill count the slot is picked from
+        emit('result', { fieldId: e.fieldId, battleId: e.battleId, own: !!e.own, result });
         deliver(e);
       }
     }
@@ -816,7 +819,11 @@ export function createBattleRunner(deps) {
       if (!e || typeof ownerId !== 'string' || !ownerId || (fieldId != null && e.fieldId !== fieldId)) return [];
       const list = Array.isArray(e.battle.allyUnits) ? e.battle.allyUnits : [];
       return list.filter((u) => u && u.kind === 'op' && u.ownerId === ownerId && typeof u.defId === 'string')
-        .map((u) => (Array.isArray(u.items) && u.items.length ? { kind: 'op', ownerId, defId: u.defId, items: [...u.items] } : { kind: 'op', ownerId, defId: u.defId }));
+        .map((u) => {
+          const o = Array.isArray(u.items) && u.items.length ? { kind: 'op', ownerId, defId: u.defId, items: [...u.items] } : { kind: 'op', ownerId, defId: u.defId };
+          const si = u.def && typeof u.def.standInFor === 'string' ? u.def.standInFor : null;
+          return si ? { ...o, standInFor: si } : o;
+        });
     },
     /** Re-show the current battle (the game screen remounted). */
     reshow() { if (cur) show(cur); },
