@@ -509,7 +509,7 @@ export class Network {
   /**
    * @param {{
    *   registry: SessionRegistry,
-   *   handler: { onHello?: Function, onMessage: Function, onDisconnect?: Function, onExpire?: Function, welcomeInfo?: Function },
+   *   handler: { onHello?: Function, onMessage: Function, onDisconnect?: Function, onExpire?: Function, onConnect?: Function, welcomeInfo?: Function },
    *   log?: { info: Function, warn: Function, error: Function, debug?: Function },
    *   now?: () => number,
    *   options?: Partial<typeof NET_DEFAULTS>,
@@ -566,6 +566,9 @@ export class Network {
     ws.on('pong', () => { conn.alive = true; if (conn.session && conn.session.ws === ws) conn.session.lastSeen = this.now(); });
     ws.on('error', (e) => { this.log.debug?.('[net] socket error', e?.code || e?.message); });
     ws.on('close', () => { try { this.onClose(conn); } catch (e) { this.log.error('[net] close handler crashed', e); } });
+    // Let the handler greet pre-hello connections (e.g. lobby pushes online.count so the
+    // title screen shows it before the user sends hello).
+    try { this.handler.onConnect?.(conn); } catch (e) { this.log.error('[net] onConnect crashed', e); }
   }
 
   /** @param {Connection} conn @param {object} msg */

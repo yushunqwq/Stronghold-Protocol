@@ -342,6 +342,17 @@ export function PauseButton({ paused, busy = false, onToggle }) {
   <//>`;
 }
 
+/** Client 2× speed toggle (top-right, combat only): 1× = normal, 2× = double sim speed. */
+export function SpeedButton({ mul = 1, onToggle }) {
+  const fast = mul >= 2;
+  return html`<${Tooltip} text=${fast ? t('恢复常速') : t('二倍速')} placement="bottom">
+    <button type="button" class=${cx('speedbtn', 'tapx', fast && 'is-on')} aria-pressed=${fast ? 'true' : 'false'}
+        aria-label=${fast ? t('恢复常速') : t('二倍速')} data-testid="speed" onClick=${() => onToggle?.()}>
+      <span class="speedbtn__label num">${fast ? '2×' : '1×'}</span>
+    </button>
+  <//>`;
+}
+
 /**
  * Top bar.
  * @param {{ pub:any, priv:any, conn:any, hud:any, total:number|null, drawer:string|null, onExit:Function, onDrawer:(tab:string)=>void,
@@ -356,7 +367,7 @@ export function PauseButton({ paused, busy = false, onToggle }) {
  *     `left` (a leaker in 联防): its enemies still standing — the capsule's ×N tag
  */
 export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, onReady, readyBusy, readyCount, playerCount, pen = false, penAvail = false, onPen = () => {},
-  config = null, frozenAt = null, pause = null, live = null, spectator = false,
+  config = null, frozenAt = null, pause = null, live = null, spectator = false, speed = null,
   spectators = null, myId = null, isHost = false, onRemoveSpectator = null }) {
   const phase = pub?.phase;
   const boss = isBossPhase(phase);
@@ -415,6 +426,7 @@ export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, 
           ? html`<${Countdown} seconds=${frozenSecs} total=${total ?? undefined} size="md" label="PAUSED" />`
           : html`<${Countdown} deadline=${pub?.deadline} total=${total ?? undefined} size="md" />`}
         ${pause && (pause.show || pause.paused) ? html`<${PauseButton} paused=${!!pause.paused} busy=${pause.busy} onToggle=${pause.onToggle} />` : null}
+        ${speed ? html`<${SpeedButton} mul=${speed.mul} onToggle=${speed.onToggle} />` : null}
       </div>
       <${OvertimeWarning} ot=${ot} />
       ${showReady ? html`<${ReadyToggle} priv=${priv} onToggle=${onReady} busy=${readyBusy} readyCount=${readyCount} total=${playerCount} />` : null}

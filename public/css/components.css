@@ -1081,3 +1081,98 @@
   --bk-c: var(--red-premium);
 }
 .crash__box h2 { font-size: calc(.3 * var(--t)); }
+
+/* online player count pill (lobby topbar, next to the ping pill) */
+.online-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .05rem;
+  height: .32rem;
+  padding: 0 .14rem 0 .11rem;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .5);
+  border: 1px solid var(--line);
+  color: var(--mint-400);
+  font-family: var(--font-num);
+  font-size: .16rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.online-pill__icon { width: .15rem; height: .15rem; }
+
+/* top notice banner (ui/notice.js): dismissible maintenance/announcement strip,
+   styled like the announcement modal (dark box, corner ticks, striped accent) in bright yellow */
+.notice-banner {
+  --nb: #ffe14d;
+  --nb-glow: rgba(255, 225, 77, .35);
+  position: fixed;
+  top: .12rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: .12rem;
+  padding: .1rem .16rem;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .016) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #1c2320, #111513);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 .3rem .9rem rgba(0, 0, 0, .65), 0 0 .4rem var(--nb-glow);
+  font-size: .15rem;
+  color: var(--text-hi);
+  white-space: nowrap;
+  max-width: calc(100vw - .4rem);
+}
+.notice-banner::before,
+.notice-banner::after {
+  content: "";
+  position: absolute;
+  width: .12rem;
+  height: .12rem;
+  border: 2px solid var(--nb);
+  opacity: .9;
+}
+.notice-banner::before {
+  top: -.02rem;
+  left: -.02rem;
+  border-right: none;
+  border-bottom: none;
+}
+.notice-banner::after {
+  bottom: -.02rem;
+  right: -.02rem;
+  border-left: none;
+  border-top: none;
+}
+.notice-banner__stripe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: .04rem;
+  background: repeating-linear-gradient(-45deg, var(--nb) 0 .06rem, transparent .06rem .13rem);
+  opacity: .55;
+}
+.notice-banner__tag {
+  font-weight: 700;
+  color: var(--nb);
+  flex: none;
+  letter-spacing: .04em;
+}
+.notice-banner__icon { flex: none; }
+.notice-banner__text { overflow: hidden; text-overflow: ellipsis; }
+.notice-banner__close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--nb);
+  font-size: .14rem;
+  cursor: pointer;
+  padding: .02rem .06rem;
+  line-height: 1;
+  opacity: .8;
+}
+.notice-banner__close:hover { color: #fff; opacity: 1; }

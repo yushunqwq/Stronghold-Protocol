@@ -47,6 +47,8 @@ import { GameScreen } from './screens/game.js';
 import { installAudio } from './audio.js';
 import { settingsStore } from './ui/settings.js';
 import { GuideHost } from './ui/guide.js';
+import { AnnounceHost, maybeAutoOpenAnnouncements } from './ui/announce.js';
+import { NoticeHost, maybeShowNotice } from './ui/notice.js';
 import { installDeviceSupport } from './ui/device.js';
 import { LoadoutHost } from './screens/loadout.js';
 import { StatsHost } from './screens/stats.js';
@@ -212,6 +214,11 @@ function wireNet() {
         lastError: snap.lastError, everOnline: cur.everOnline || snap.status === 'online',
       },
     });
+    // the server drops the queue entry on disconnect: the client must not show a stale queue
+    if (snap.status !== 'online' && (store.get().matchmaking || store.get().matchVote)) {
+      store.set({ matchmaking: null, matchVote: null });
+      toast(t('连接已断开，匹配已取消'), 'warn');
+    }
   });
   net.on('clock', (c) => store.set({ clock: { offset: c.offset, rtt: c.rtt, synced: c.synced } }));
   net.on('welcome', onWelcome);
@@ -255,6 +262,43 @@ function wireNet() {
   });
   net.on('m.emote', (msg) => {
     store.set((s) => ({ emotes: [...s.emotes.slice(-(EMOTE_KEEP - 1)), { seq: ++seq, playerId: msg.playerId, id: msg.id, at: Date.now() }] }));
+  });
+  // alliance match (server/matchmaking.js): queue state follows the server; on `found` the room.state
+  // broadcast (the room was formed and its match started) routes to the game screen on its own
+  net.on('matchmaking.state', (msg) => {
+    store.set({
+      matchmaking: msg && msg.inQueue
+        ? { inQueue: true, waiting: Math.max(0, msg.waiting | 0), difficulty: typeof msg.difficulty === 'string' ? msg.difficulty : null }
+        : null,
+    });
+  });
+  net.on('matchmaking.found', () => {
+    store.set({ matchmaking: null, matchVote: null });
+    toast(t('匹配成功！正在开始模拟…'), 'success');
+  });
+  // online player count for the lobby top bar
+  net.on('online.count', (msg) => {
+    const n = msg && Number.isFinite(msg.count) ? Math.max(0, Math.floor(msg.count)) : null;
+    if (n !== store.get().onlineCount) store.set({ onlineCount: n });
+  });
+  // startNow vote: show the ballot; on close, toast the result (the match starts via found)
+  net.on('matchmaking.voteState', (msg) => {
+    store.set({
+      matchVote: {
+        withBots: !!msg.withBots,
+        initiator: typeof msg.initiator === 'string' ? msg.initiator : null,
+        initiatorName: typeof msg.initiatorName === 'string' ? msg.initiatorName : t('博士'),
+        agree: Math.max(0, msg.agree | 0),
+        disagree: Math.max(0, msg.disagree | 0),
+        total: Math.max(0, msg.total | 0),
+        needed: Math.max(0, msg.needed | 0),
+        voted: Array.isArray(msg.voted) ? msg.voted.filter((id) => typeof id === 'string') : [],
+      },
+    });
+  });
+  net.on('matchmaking.voteEnd', (msg) => {
+    store.set({ matchVote: null });
+    if (!msg || !msg.passed) toast(msg && msg.cancelled ? t('投票已取消') : t('投票未通过，继续等待匹配'), 'warn');
   });
 
   // Entering (title → lobby) while already online also needs the deep-link join.
@@ -303,6 +347,8 @@ function App() {
     <${ToastHost} />
     <${UiHosts} />
     <${GuideHost} />
+    <${AnnounceHost} />
+    <${NoticeHost} />
     <${LoadoutHost} />
     <${StatsHost} />
   </div>`;
@@ -381,6 +427,10 @@ async function boot() {
   await Promise.all([waitForFonts(1200), connectWhenReady, langReady]);
   const root = document.getElementById('app');
   render(html`<${App} />`, root);
+  // Auto-open announcements on first load / when there are new ones.
+  try { maybeAutoOpenAnnouncements(); } catch (err) { console.warn('[app] announce auto-open failed', err); }
+  // Show the top notice banner when there is one not yet dismissed.
+  try { maybeShowNotice(); } catch (err) { console.warn('[app] notice banner failed', err); }
 
   const splash = document.getElementById('boot');
   if (splash) {

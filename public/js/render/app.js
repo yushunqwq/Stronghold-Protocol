@@ -1804,6 +1804,12 @@ export async function createFieldView(host, options = {}) {
       interp.delay = on ? 0.034 : 0.1;
       interp.defaultRate = on ? Math.min(20, speed) : 2;
       interp.maxRate = on ? Math.max(8, speed * 1.5) : 8;
+      if (on) {
+        // snap the estimated rate at once, and drop the arrival history: otherwise the arrival-based
+        // EMA (which still holds pre-switch snapshots) fights the new rate and the render clock jitters
+        interp.rate = Math.min(Math.max(speed, interp.minRate), interp.maxRate);
+        interp.arrivals.length = 0;
+      }
       return true;
     },
     highlightTiles(tilesList, style) {
