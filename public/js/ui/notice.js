@@ -9,7 +9,7 @@ import { createStore, useStore } from '../store.js';
 
 /** @type {Array<{ tag: string, text: string }>} */
 export const NOTICES = [
-  { tag: '维护通知', text: '预计明天晚上11点更新0.2.5版本' },
+  { tag: '维护通知', text: '服务器已更新到 0.2.6 版本' },
 ];
 
 const noticeStore = createStore({ visible: false });
