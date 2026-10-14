@@ -15,7 +15,7 @@
 .lobby-left, .lobby-right { display: flex; flex-direction: column; min-width: 0; }
 
 /* ---- mode cards ------------------------------------------------------------------------------------ */
-.mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: .24rem; margin-bottom: .34rem; }
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .24rem; margin-bottom: .34rem; }
 .mode-card {
   --bk-c: transparent;
   --bk-l: .2rem;
@@ -238,3 +238,22 @@
 .create-box { margin-top: .3rem; display: flex; flex-direction: column; gap: .12rem; }
 .create-box .btn--xl { height: .92rem; font-size: calc(.32 * var(--t)); letter-spacing: .3em; }
 .create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+
+/* matching: 直接开始 / AI 补位开始 side by side */
+.match-start-row { display: flex; gap: .12rem; }
+.match-start-row .tt-anchor { flex: 1; min-width: 0; }
+.match-start-row .btn { letter-spacing: .12em; }
+/* startNow vote */
+.vote-box { display: flex; flex-direction: column; gap: .12rem; padding: .16rem; border: 1px solid var(--line-amber); border-radius: .08rem; background: rgba(0,0,0,.3); }
+.vote-box__title { display: flex; align-items: center; gap: .08rem; font-size: .2rem; color: var(--text-hi); }
+.vote-box__progress { display: flex; align-items: center; justify-content: center; gap: .04rem; font-size: .16rem; }
+
+/* ---- quick match (快速匹配, js/screens/lobby.js) ------------------------------------------------------- */
+.mm-queuebox .panel__body { padding: .22rem .26rem; }
+.mm-queuebox__row { display: flex; align-items: center; gap: .3rem; }
+.mm-queuebox__text { display: flex; flex-direction: column; gap: .08rem; flex: 1; font-size: .3rem; color: var(--text-hi); }
+.mm-queuebox__text .t-dim { font-size: .24rem; }
+@media (max-width: 640px) {
+  .mode-cards { grid-template-columns: 1fr; }
+  .mm-queuebox__row { flex-wrap: wrap; }
+}

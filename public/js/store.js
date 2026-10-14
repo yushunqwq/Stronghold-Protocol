@@ -84,6 +84,12 @@ export const initialState = Object.freeze({
   emotes: [],
   clock: { offset: 0, rtt: null, synced: false },
   ui: { pendingJoin: null, restoring: false, buildStale: false },
+  // alliance match (server/matchmaking.js): null when not queued, else { inQueue, waiting, difficulty }
+  matchmaking: null,
+  // startNow vote: null when no vote, else { withBots, initiatorName, agree, disagree, total, needed, voted }
+  matchVote: null,
+  // online player count from the server (online.count broadcast), null until first push
+  onlineCount: null,
 });
 
 /** The app-wide store singleton. */
