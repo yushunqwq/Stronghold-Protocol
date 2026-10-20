@@ -18,6 +18,8 @@ export const ANNOUNCEMENTS = [
 预计不久后官方将开放卫戍协议活动</p>
 <h4>近期更新内容</h4>
 <p>同步上游 0.3.1 版本</p>
+<h4>赞助</h4>
+<p>感谢本站开放以来各位的赞助，为网站的功能修改等提供了帮助</p>
 <h4>反馈</h4>
 <p>B 站：<a href="https://space.bilibili.com/545653981" target="_blank" rel="noopener">Yushun_Zero</a></p>
 <h4>鸣谢</h4>
