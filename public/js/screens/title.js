@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from '../../vendor/hooks.module.js';
 import { NAME_MAX_LEN, APP_VERSION, DEV_BUILD } from '../../../shared/constants.js';
 import { html, Button, Icon, MicroLabel, TextField, PingPill } from '../ui/components.js';
 import { GuideButton } from '../ui/guide.js';
+import { AnnounceButton } from '../ui/announce.js';
 import { openStats } from './stats.js';
 import { toast } from '../ui/toasts.js';
 import { net, identity } from '../net.js';
@@ -164,6 +165,7 @@ const STATUS_TEXT = {
 export function TitleScreen() {
   const conn = useStore((s) => s.connection, shallowEqual);
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
+  const onlineCount = useStore((s) => s.onlineCount);
   useLang(); // re-render on a language switch
   const currentName = useStore((s) => s.me.name);
   const [name, setName] = useState(() => currentName || identity.loadName() || '');
@@ -261,7 +263,11 @@ export function TitleScreen() {
           <span class=${`status-dot ${dotClass}`}></span>
           <span>${STATUS_TEXT[conn.status] ? t(STATUS_TEXT[conn.status]) : conn.status}</span>
           ${conn.status === 'online' ? html`<${PingPill} ms=${conn.ping} />` : null}
+          ${onlineCount != null ? html`<span class="online-pill" title=${t('当前在线人数')}><${Icon} name="users" class="online-pill__icon" /><span class="online-pill__value">${t('在线')} ${onlineCount}</span><//>` : null}
+        </div>
+        <div class="title-actions">
           <${GuideButton} class="title-guide" label=${t('玩法说明')} />
+          <${AnnounceButton} class="title-announce" />
           <button type="button" class="title-settings fsbtn tapx" aria-label=${t('设置')} title=${t('设置')}
             onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>
           <${FullscreenButton} class="title-fs" />
@@ -282,7 +288,10 @@ export function TitleScreen() {
       <${NoticesButton} />
       ${installed ? html`<button type="button" class="title-plugins" data-testid="title-plugins" onClick=${openPlugins}>
         <${Icon} name="info" />${t('本服务器安装了 {n} 个插件', { n: installed })}</button>` : null}
-      <span>${t('非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有')}</span>
+      <div class="title-foot__left">
+        <span class="title-sponsor">${t('本站可能不定时重启更新，对此造成的不便请见谅')}</span>
+        <span>${t('非官方同人复刻 · 游戏素材版权归 上海鹰角网络 / Yostar 所有')}</span>
+      </div>
       <span class="title-foot__meta">
         <a class="title-repo" href="https://github.com/sganggs/Stronghold-Protocol" target="_blank" rel="noopener noreferrer">${t('项目仓库')}</a>
         <${MicroLabel}>v${APP_VERSION} · WEB SIMULATION<//>
