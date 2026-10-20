@@ -10,20 +10,16 @@ import { createStore, useStore } from '../store.js';
 /** @type {Array<{ date: string, title: string, body: string }>} body is HTML. */
 export const ANNOUNCEMENTS = [
   {
-    date: '2026-10-07',
+    date: '2026-10-20',
     title: '服务器公告',
-    body: `<h4>服务说明</h4>
-<p>本站服务器带宽很小，无法保证晚高峰加载速度<br>
-本站纯公益，可能不定时停服更新，对此造成的不便请见谅<br>
-闪断对局不中断的功能有考虑开发</p>
+    body: `<h4>停止服务说明</h4>
+<p>由于维护服务要投入的时间和精力较大<br>
+本站预计 11 月 4 日（即本站服务器到期时间）停止服务<br>
+预计不久后官方将开放卫戍协议活动</p>
 <h4>近期更新内容</h4>
-<p>同步上游 0.2.6 版本</p>
+<p>同步上游 0.3.1 版本</p>
 <h4>反馈</h4>
 <p>B 站：<a href="https://space.bilibili.com/545653981" target="_blank" rel="noopener">Yushun_Zero</a></p>
-<h4>赞助</h4>
-<p>本服务器不强制要求赞助，自愿扫码赞助</p>
-<p><img src="https://img.chiruno.com/uploads/2026/10/18dc38126e0cd343434.webp" alt="赞助二维码" style="max-width: 2.4rem; width: 100%; border-radius: .06rem;" /></p>
-<p>承诺所有赞助均用来续费和升级服务器</p>
 <h4>鸣谢</h4>
 <p>感谢 @Ausevay 开发本项目 <a href="https://space.bilibili.com/429961520" target="_blank" rel="noopener">https://space.bilibili.com/429961520</a></p>`,
   },
