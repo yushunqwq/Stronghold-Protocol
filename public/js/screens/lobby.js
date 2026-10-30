@@ -660,8 +660,131 @@ export function AllianceSelect({ onClose, onCreate, difficulty = 'FUNNY', code, 
   <//>`;
 }
 
+/**
+ * 同盟匹配 (the hub's third entry): a full-screen dialog like 选择模拟协议 — the selected difficulty's official
+ * picture and brief at the left, the four difficulty cards down the right, and the match controls below them:
+ * 开始匹配 enters the queue, then 匹配中 shows 直接开始 / AI 补位开始 / 取消匹配, plus the vote UI while a start
+ * vote is open. The dialog cannot be closed while matching (Esc / backdrop / the back button are disabled then —
+ * the queue and vote UI live here).
+ */
+export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, testMode, asTest, onTest,
+  matching, vote, mm, me, onMatch, onCancelMatch, onStartNow, onVote, onCancelVote }) {
+  const card = MODE_CARDS.find((c) => c.id === 'quick') || MODE_CARDS[0];
+  const info = difficultyInfo('quick', difficulty);
+  const close = matching ? undefined : onClose;
+  return html`<${Modal} open=${true} onClose=${close} class="proto" veilClass="proto-veil">
+    <div class="proto__body" style=${`--d-color:${DIFFICULTY_COLORS[difficulty]}`} data-difficulty=${difficulty} data-mode="quick">
+      <div class="proto__bg" aria-hidden="true"></div>
+      <${ProtoFit} />
+      <header class="proto-top">
+        <${BackPlate} onClick=${close} class="proto__back" />
+        <div class="proto-title">
+          <h2 class="modal__title">${t('同盟匹配')}</h2>
+          <span class="proto-title__mode"><${Icon} name=${card.icon} />${t(card.name)}<i>${card.en}</i></span>
+        </div>
+      </header>
+      <div class="proto-body">
+        <section class="proto-stage">
+          <div key=${difficulty} class="proto__pic"><${ProtocolArt} difficulty=${difficulty} /></div>
+          <div class="proto-brief">
+            <span class="proto-brief__code num">${info.code}</span>
+            <b class="proto-brief__name">${t(DIFFICULTY_NAMES[difficulty])}</b>
+            <p>${info.desc}</p>
+            <div class="proto-brief__more" data-testid="proto-brief-more">
+              <span class="proto-brief__effects">${info.effects.map((e) => html`<span key=${e}>${e}</span>`)}</span>
+              <span class="proto-brief__meta"><${DifficultyRounds} info=${info} /></span>
+            </div>
+          </div>
+        </section>
+        <section class="proto-side">
+          <div class="proto-list" role="group" aria-label=${t('模拟难度')}>
+            ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode="quick" difficulty=${d} selected=${difficulty === d} onSelect=${onDifficulty} disabled=${matching} />`)}
+          </div>
+          <div class="proto-foot create-box">
+            ${matching ? html`
+              ${vote ? html`
+                <div class="vote-box">
+                  <div class="vote-box__title">
+                    <${Icon} name="vote" />
+                    <span>${vote.initiator === me.playerId ? t('你发起投票') : t('{name} 发起投票', { name: vote.initiatorName })}：${vote.withBots ? t('AI 补位开始') : t('直接开始')}</span>
+                  </div>
+                  <div class="vote-box__progress">
+                    <span class="t-mint">${t('同意')} <span class="num">${vote.agree}</span></span>
+                    <span class="t-dim"> / </span>
+                    <span class="t-orange">${t('拒绝')} <span class="num">${vote.disagree}</span></span>
+                    <span class="t-dim">${t('（需 {needed} 票通过，共 {total} 人）', { needed: vote.needed, total: vote.total })}</span>
+                  </div>
+                  ${vote.initiator === me.playerId ? html`
+                    <div class="match-start-row">
+                      <${Button} variant="secondary" size="lg" block=${true} icon="hourglass" disabled=${true}>
+                        ${t('等待其他玩家回应')}
+                      <//>
+                      <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${onCancelVote}>
+                        ${t('取消投票')}
+                      <//>
+                    </div>
+                  ` : html`
+                    <div class="match-start-row">
+                      <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => onVote(true)}>
+                        ${t('同意')}
+                      <//>
+                      <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => onVote(false)}>
+                        ${t('拒绝')}
+                      <//>
+                    </div>
+                  `}
+                </div>
+              ` : html`
+                <div class="match-start-row">
+                  <${Tooltip} block=${true} text=${online ? t('以当前匹配到的博士直接开局（人数不足，不补 AI）') : t('正在连接服务器…')}>
+                    <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => onStartNow(false)}>
+                      ${t('直接开始')}
+                    <//>
+                  <//>
+                  <${Tooltip} block=${true} text=${online ? t('AI 队友补齐空位至 4 人后开局') : t('正在连接服务器…')}>
+                    <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => onStartNow(true)}>
+                      ${t('AI 补位开始')}
+                    <//>
+                  <//>
+                </div>
+              `}
+              <div class="create-box__hint">
+                ${online
+                  ? html`<span><${Spinner} size="sm" /> ${t('匹配中 · 已有 {waiting} / 4 名博士', { waiting: mm.waiting })}</span>`
+                  : html`<${Spinner} size="sm" label="CONNECTING" />`}
+              </div>
+              <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
+                <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${onCancelMatch}>
+                  ${t('取消匹配')}
+                <//>
+              <//>
+            ` : html`
+              ${testMode ? html`<label class="create-box__test" data-testid="create-test">
+                <input type="checkbox" checked=${asTest} onChange=${(e) => onTest(e.target.checked)} />
+                <span>${t('测试房间')}</span>
+                <em class="t-dim">${t('不计入战绩。房间会标明「测试」，只有房主能使用测试指令。')}</em>
+              </label>` : null}
+              <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
+                <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${onMatch}>
+                  ${t('开始匹配')}
+                <//>
+              <//>
+              <div class="create-box__hint">
+                ${online
+                  ? html`<span>${t('同难度 · 可 AI 补位')}</span>`
+                  : html`<${Spinner} size="sm" label="CONNECTING" />`}
+              </div>
+            `}
+          </div>
+        </section>
+      </div>
+    </div>
+  <//>`;
+}
+
 /** Lobby screen component. */
 export function LobbyScreen() {
+  const me = useStore((s) => s.me, shallowEqual);
   const conn = useStore((s) => s.connection, shallowEqual);
   const mm = useStore((s) => s.matchmaking);
   const vote = useStore((s) => s.matchVote);
@@ -840,89 +963,12 @@ export function LobbyScreen() {
       onClose=${() => setSoloOpen(false)} onCreate=${() => create('solo')} busy=${busy} online=${online}
       testMode=${testMode} asTest=${asTest} onTest=${setAsTest} difficulties=${solo} loading=${versionLoading} failed=${versionFailed}
       soloTime=${soloTimed === true ? { on: soloFree, onToggle: setSoloFreePref } : null} />` : null}
-    ${(quickOpen || matching) ? html`
-      <section class="match-panel">
-        <div class="section-label"><span class="section-label__idx num">⚡</span>${t('同盟匹配')}<${MicroLabel}>ALLIANCE MATCH<//>${!matching ? html`<button type="button" class="match-panel__close" onClick=${() => setQuickOpen(false)} title=${t('关闭')} aria-label=${t('关闭')}><${Icon} name="x" /><//>` : null}</div>
-        <div class="section-label"><span class="section-label__idx num">难</span>${t('模拟难度')}<${MicroLabel}>DIFFICULTY<//></div>
-        <div class="diff-list">
-          ${DIFFICULTIES.map((d) => html`<${DifficultyCard} key=${d} roomMode="quick" difficulty=${d} selected=${difficulty === d} onSelect=${pickDifficulty} />`)}
-        </div>
-        <div class="create-box">
-          ${matching ? html`
-            ${vote ? html`
-              <div class="vote-box">
-                <div class="vote-box__title">
-                  <${Icon} name="vote" />
-                  <span>${vote.initiator === me.playerId ? t('你发起投票') : t('{name} 发起投票', { name: vote.initiatorName })}：${vote.withBots ? t('AI 补位开始') : t('直接开始')}</span>
-                </div>
-                <div class="vote-box__progress">
-                  <span class="t-mint">${t('同意')} <span class="num">${vote.agree}</span></span>
-                  <span class="t-dim"> / </span>
-                  <span class="t-orange">${t('拒绝')} <span class="num">${vote.disagree}</span></span>
-                  <span class="t-dim">${t('（需 {needed} 票通过，共 {total} 人）', { needed: vote.needed, total: vote.total })}</span>
-                </div>
-                ${vote.initiator === me.playerId ? html`
-                  <div class="match-start-row">
-                    <${Button} variant="secondary" size="lg" block=${true} icon="hourglass" disabled=${true}>
-                      ${t('等待其他玩家回应')}
-                    <//>
-                    <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${cancelVote}>
-                      ${t('取消投票')}
-                    <//>
-                  </div>
-                ` : html`
-                  <div class="match-start-row">
-                    <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => castVote(true)}>
-                      ${t('同意')}
-                    <//>
-                    <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => castVote(false)}>
-                      ${t('拒绝')}
-                    <//>
-                  </div>
-                `}
-              </div>
-            ` : html`
-              <div class="match-start-row">
-                <${Tooltip} block=${true} text=${online ? t('以当前匹配到的博士直接开局（人数不足，不补 AI）') : t('正在连接服务器…')}>
-                  <${Button} variant="primary" size="lg" block=${true} icon="play" loading=${busy === 'startNow'} disabled=${!online} onClick=${() => startNow(false)}>
-                    ${t('直接开始')}
-                  <//>
-                <//>
-                <${Tooltip} block=${true} text=${online ? t('AI 队友补齐空位至 4 人后开局') : t('正在连接服务器…')}>
-                  <${Button} variant="secondary" size="lg" block=${true} icon="users" loading=${busy === 'startNowBots'} disabled=${!online} onClick=${() => startNow(true)}>
-                    ${t('AI 补位开始')}
-                  <//>
-                <//>
-              </div>
-            `}
-            <div class="create-box__hint">
-              ${online
-                ? html`<span><${Spinner} size="sm" /> ${t('匹配中 · 已有 {waiting} / 4 名博士', { waiting: mm.waiting })}</span>`
-                : html`<${Spinner} size="sm" label="CONNECTING" />`}
-            </div>
-            <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
-              <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${cancelMatch}>
-                ${t('取消匹配')}
-              <//>
-            <//>
-          ` : html`
-            ${testMode ? html`<label class="create-box__test" data-testid="create-test">
-              <input type="checkbox" checked=${asTest} onChange=${(e) => setAsTest(e.target.checked)} />
-              <span>${t('测试房间')}</span>
-              <em class="t-dim">${t('不计入战绩。房间会标明「测试」，只有房主能使用测试指令。')}</em>
-            </label>` : null}
-            <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
-              <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${() => create()}>
-                ${roomMode === 'solo' ? t('开始独立模拟') : isQuick ? t('开始匹配') : t('创建同盟')}
-              <//>
-            <//>
-            <div class="create-box__hint">
-              ${online
-                ? html`<span>${roomMode === 'solo' ? t('创建后即可开始模拟') : isQuick ? t('同难度 · 可 AI 补位') : t('创建后可邀请好友或添加 AI 队友')}</span>`
-                : html`<${Spinner} size="sm" label="CONNECTING" />`}
-            </div>
-          `}
-      </section>` : null}
+    ${(quickOpen || matching) ? html`<${MatchSelect}
+      difficulty=${difficulty} onDifficulty=${pickDifficulty} onClose=${() => setQuickOpen(false)}
+      online=${online} busy=${busy} testMode=${testMode} asTest=${asTest} onTest=${setAsTest}
+      matching=${matching} vote=${vote} mm=${mm} me=${me}
+      onMatch=${() => create()} onCancelMatch=${cancelMatch} onStartNow=${startNow} onVote=${castVote} onCancelVote=${cancelVote}
+    />` : null}
     ${sweepOpen ? html`<${SweepReport} onClose=${() => setSweepOpen(false)} />` : null}
     ${achOpen ? html`<${AchievementDialog} onClose=${() => setAchOpen(false)} />` : null}
   </div>`;
