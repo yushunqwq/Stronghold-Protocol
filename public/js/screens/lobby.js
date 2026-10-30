@@ -38,7 +38,7 @@ import { TestMark } from '../ui/testConsole.js';
 import { ResumeMatchButton } from '../ui/resumeMatch.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, ROOM_CODE_LEN, MAX_SEATS, MAX_SPECTATORS, modeIdFor, ERR } from '../../../shared/constants.js';
-import { html, confirmDialog, Button, Icon, MicroLabel, Modal, PingPill, Spinner, DifficultyIcon, TextField } from '../ui/components.js';
+import { html, confirmDialog, Button, Icon, MicroLabel, Modal, PingPill, Spinner, DifficultyIcon, TextField, Tooltip } from '../ui/components.js';
 import { Sprite, Img } from '../ui/gameComponents.js';
 import { uiUrl } from '../ui/assetUrls.js';
 import { peekStatsRecords, trophyMedalOf, aggregateStats, recordsOfSeason } from '../ui/stats.js';
@@ -50,7 +50,6 @@ import { AnnounceButton } from '../ui/announce.js';
 import { RadarScene, CreateArt, JoinArt } from '../ui/allyArt.js';
 import { ProtocolScene } from '../ui/protocolScene.js';
 import { AchievementDialog, useStatsOpen } from './stats.js';
-import { openStats } from './stats.js';
 import { SweepReport } from './sweep.js';
 import { Emblem } from './title.js';
 import { SettingsButton } from '../ui/settings.js';
@@ -667,7 +666,7 @@ export function AllianceSelect({ onClose, onCreate, difficulty = 'FUNNY', code, 
  * vote is open. The dialog cannot be closed while matching (Esc / backdrop / the back button are disabled then —
  * the queue and vote UI live here).
  */
-export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, testMode, asTest, onTest,
+export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy,
   matching, vote, mm, me, onMatch, onCancelMatch, onStartNow, onVote, onCancelVote }) {
   const card = MODE_CARDS.find((c) => c.id === 'quick') || MODE_CARDS[0];
   const info = difficultyInfo('quick', difficulty);
@@ -705,7 +704,7 @@ export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, t
               ${vote ? html`
                 <div class="vote-box">
                   <div class="vote-box__title">
-                    <${Icon} name="vote" />
+                    <${Icon} name="users" />
                     <span>${vote.initiator === me.playerId ? t('你发起投票') : t('{name} 发起投票', { name: vote.initiatorName })}：${vote.withBots ? t('AI 补位开始') : t('直接开始')}</span>
                   </div>
                   <div class="vote-box__progress">
@@ -719,7 +718,7 @@ export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, t
                       <${Button} variant="secondary" size="lg" block=${true} icon="hourglass" disabled=${true}>
                         ${t('等待其他玩家回应')}
                       <//>
-                      <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${onCancelVote}>
+                      <${Button} variant="ghost" size="lg" block=${true} icon="close" loading=${busy === 'voteCancel'} disabled=${!online} onClick=${onCancelVote}>
                         ${t('取消投票')}
                       <//>
                     </div>
@@ -728,7 +727,7 @@ export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, t
                       <${Button} variant="primary" size="lg" block=${true} icon="check" loading=${busy === 'voteYes'} disabled=${!online} onClick=${() => onVote(true)}>
                         ${t('同意')}
                       <//>
-                      <${Button} variant="secondary" size="lg" block=${true} icon="x" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => onVote(false)}>
+                      <${Button} variant="secondary" size="lg" block=${true} icon="close" loading=${busy === 'voteNo'} disabled=${!online} onClick=${() => onVote(false)}>
                         ${t('拒绝')}
                       <//>
                     </div>
@@ -754,16 +753,11 @@ export function MatchSelect({ difficulty, onDifficulty, onClose, online, busy, t
                   : html`<${Spinner} size="sm" label="CONNECTING" />`}
               </div>
               <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
-                <${Button} variant="ghost" size="lg" block=${true} icon="x" loading=${busy === 'cancel'} disabled=${!online} onClick=${onCancelMatch}>
+                <${Button} variant="ghost" size="lg" block=${true} icon="close" loading=${busy === 'cancel'} disabled=${!online} onClick=${onCancelMatch}>
                   ${t('取消匹配')}
                 <//>
               <//>
             ` : html`
-              ${testMode ? html`<label class="create-box__test" data-testid="create-test">
-                <input type="checkbox" checked=${asTest} onChange=${(e) => onTest(e.target.checked)} />
-                <span>${t('测试房间')}</span>
-                <em class="t-dim">${t('不计入战绩。房间会标明「测试」，只有房主能使用测试指令。')}</em>
-              </label>` : null}
               <${Tooltip} block=${true} text=${online ? null : t('正在连接服务器…')}>
                 <${Button} variant="primary" size="xl" block=${true} iconRight="chevrons" loading=${busy === 'create'} disabled=${!online} onClick=${onMatch}>
                   ${t('开始匹配')}
@@ -965,7 +959,7 @@ export function LobbyScreen() {
       soloTime=${soloTimed === true ? { on: soloFree, onToggle: setSoloFreePref } : null} />` : null}
     ${(quickOpen || matching) ? html`<${MatchSelect}
       difficulty=${difficulty} onDifficulty=${pickDifficulty} onClose=${() => setQuickOpen(false)}
-      online=${online} busy=${busy} testMode=${testMode} asTest=${asTest} onTest=${setAsTest}
+      online=${online} busy=${busy}
       matching=${matching} vote=${vote} mm=${mm} me=${me}
       onMatch=${() => create()} onCancelMatch=${cancelMatch} onStartNow=${startNow} onVote=${castVote} onCancelVote=${cancelVote}
     />` : null}
