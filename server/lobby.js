@@ -231,7 +231,7 @@ import { aiTakeover, resetAiTakeover, reconcileAiTakeover } from './aiTakeover.j
 import { randomBytes, randomInt } from 'node:crypto';
 import { DIFFICULTIES, ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, charPotentialChanges, checkSkinSelection, operatorCharIds } from '../shared/protocol.js';
-import { encode, isDroppable, isErrCode, send, sendRaw, sendSession } from './net.js';
+import { encode, isErrCode, send, sendRaw, sendSession } from './net.js';
 import { Matchmaker } from './matchmaking.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
