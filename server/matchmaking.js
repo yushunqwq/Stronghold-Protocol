@@ -97,7 +97,11 @@ export class Matchmaker {
     if (cur) lobby.removeMember(cur, pid);
     const prev = existing ? existing.difficulty : null;
     this.queue.set(pid, { playerId: pid, difficulty, joinedAt: this.now() });
-    if (prev && prev !== difficulty) this._broadcastGroup(prev);
+    if (prev && prev !== difficulty) {
+      // switching difficulty abandons the old difficulty's vote (the ballot must not follow)
+      this._cancelVotesFor(pid, true);
+      this._broadcastGroup(prev);
+    }
     this._broadcastGroup(difficulty);
     lobby.log.info(`[matchmaking] ${session.name} queued (${difficulty}, ${this.queue.size} waiting)`);
     return OK;
@@ -169,12 +173,14 @@ export class Matchmaker {
     for (const v of vote.votes.values()) if (v) agree++;
     if (agree >= needed) {
       this.votes.delete(vote.difficulty);
-      this._broadcastVoteEnd(vote, true);
       const team = vote.memberIds
         .map((id) => this.queue.get(id))
         .filter((en) => en && en.difficulty === vote.difficulty);
       team.sort((a, b) => a.joinedAt - b.joinedAt || (a.playerId < b.playerId ? -1 : 1));
-      this._startNowTeam(team, vote.withBots, vote.difficulty);
+      const r = this._startNowTeam(team, vote.withBots, vote.difficulty);
+      // voteEnd after the start attempt: on failure the team is back in the queue and the
+      // voters hear '投票未通过，继续等待匹配' instead of returning to waiting in silence
+      this._broadcastVoteEnd(vote, !(r && r.error));
       return;
     }
     const disagree = vote.votes.size - agree;
@@ -233,7 +239,15 @@ export class Matchmaker {
       this._broadcastGroup(difficulty);
       return fail(ERR.INTERNAL, 'failed to start');
     }
-    for (const m of members) sendSession(m.session, { t: 'matchmaking.found', code: room.code });
+    for (const m of members) {
+      if (lobby.roomOf(m.session) && lobby.roomOf(m.session).code === room.code) {
+        sendSession(m.session, { t: 'matchmaking.found', code: room.code });
+      } else {
+        lobby.log.warn(`[matchmaking] ${room.code} startNow reseat failed for ${m.session.name}, re-queued`);
+        this.queue.set(m.entry.playerId, { playerId: m.entry.playerId, difficulty, joinedAt: m.entry.joinedAt });
+        this._pushState(m.entry.playerId);
+      }
+    }
     this._broadcastGroup(difficulty);
     const bots = room.seats.filter((s) => s && s.isBot).length;
     lobby.log.info(`[matchmaking] ${room.code} startNow (${difficulty}): ${members.length} humans${bots ? ` + ${bots} bots` : ''}, match started`);
@@ -259,7 +273,11 @@ export class Matchmaker {
     const touched = new Set();
     for (const [pid, e] of this.queue) {
       const s = lobby.registry.byId(pid);
-      if (!s || !s.connected || lobby.roomOf(s)) { this.queue.delete(pid); touched.add(e.difficulty); }
+      if (!s || !s.connected || lobby.roomOf(s)) {
+        this.queue.delete(pid);
+        touched.add(e.difficulty);
+        this._cancelVotesFor(pid, true);
+      }
     }
     for (const d of touched) this._broadcastGroup(d);
     const now = this.now();
@@ -295,6 +313,12 @@ export class Matchmaker {
   _formTeam(team) {
     const lobby = this.lobby;
     const difficulty = team[0].difficulty;
+    // seating the team supersedes any startNow vote for the difficulty
+    const pending = this.votes.get(difficulty);
+    if (pending) {
+      this.votes.delete(difficulty);
+      this._broadcastVoteEnd(pending, false, true);
+    }
     const members = [];
     for (const e of team) {
       const s = lobby.registry.byId(e.playerId);
@@ -330,7 +354,16 @@ export class Matchmaker {
       this._broadcastGroup(difficulty);
       return;
     }
-    for (const m of members) sendSession(m.session, { t: 'matchmaking.found', code: room.code });
+    for (const m of members) {
+      if (lobby.roomOf(m.session) && lobby.roomOf(m.session).code === room.code) {
+        sendSession(m.session, { t: 'matchmaking.found', code: room.code });
+      } else {
+        // the join failed: back to the queue instead of being stranded without a room
+        lobby.log.warn(`[matchmaking] ${room.code} reseat failed for ${m.session.name}, re-queued`);
+        this.queue.set(m.entry.playerId, { playerId: m.entry.playerId, difficulty, joinedAt: m.entry.joinedAt });
+        this._pushState(m.entry.playerId);
+      }
+    }
     this._broadcastGroup(difficulty);
     lobby.log.info(`[matchmaking] ${room.code} formed (${difficulty}): ${members.length} humans, match started`);
   }
@@ -345,14 +378,22 @@ export class Matchmaker {
       if (s && s.connected) sendSession(s, { t: 'matchmaking.state', inQueue: false });
     }
     this._broadcastGroup(e.difficulty);
-    // a member leaving cancels the difficulty's startNow vote
+    this._cancelVotesFor(playerId, false);
+    return true;
+  }
+
+  /**
+   * Cancel every startNow vote the player is part of (they left / went stale / changed
+   * difficulty, or their team just formed and the vote is moot). `cancelled` decides the
+   * client's toast: true → '投票已取消', false → '投票未通过，继续等待匹配'.
+   */
+  _cancelVotesFor(playerId, cancelled) {
     for (const [diff, vote] of this.votes) {
       if (vote.memberIds.includes(playerId)) {
         this.votes.delete(diff);
-        this._broadcastVoteEnd(vote, false);
+        this._broadcastVoteEnd(vote, false, cancelled);
       }
     }
-    return true;
   }
 
   /** Push the current queue state to one player. */

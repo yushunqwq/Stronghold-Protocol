@@ -679,8 +679,10 @@ export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'room.state', 'room.closed',
   // quick match (server/matchmaking.js): matchmaking.state { inQueue, waiting?, difficulty? } follows the
-  // queue; matchmaking.found { code } fires for every seated player (room.state follows)
-  'matchmaking.state', 'matchmaking.found',
+  // queue; matchmaking.found { code } fires for every seated player (room.state follows);
+  // matchmaking.voteState { withBots, initiator, initiatorName, agree, disagree, total, needed, voted } follows
+  // an open startNow vote; matchmaking.voteEnd { passed, cancelled? } ends it
+  'matchmaking.state', 'matchmaking.found', 'matchmaking.voteState', 'matchmaking.voteEnd',
   // online.count { count } — current connected-session count, broadcast on connect/disconnect + periodic
   'online.count',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
