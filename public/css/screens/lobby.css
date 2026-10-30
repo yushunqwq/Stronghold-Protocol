@@ -1,11 +1,28 @@
-/* ==========================================================================================
-   screens/lobby.css — the hub (official entry backdrop, the emblem in its radar and the title, 成就统计 / 密钥加入 /
+/* ===================================================================================   screens/lobby.css — the hub (official entry backdrop, the emblem in its radar and the title, 成就统计 / 密钥加入 /
    作战提示 at the left, the light S.W.E.E.P.报告 / 干员调配 plates at the right, the 独立模拟 / 同盟模拟 entries at the
    bottom right), and the two full-screen dialogs (the project's Modal): 选择模拟协议 (official picture, difficulty cards
    with the 已选定 stamp, 开始独立模拟 — or the room's 确认 / read-only view) and 选择同盟方式 (radar, 创建同盟 and 加入同盟
    cards). Text follows 文字大小 (calc(k * var(--t))).
    ========================================================================================== */
 
+.lobby-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: .5rem;
+  width: 100%;
+  max-width: 19.2rem;
+  margin: 0 auto;
+  padding: .36rem .6rem .4rem;
+  align-content: start;
+}
+.lobby-left, .lobby-right { display: flex; flex-direction: column; min-width: 0; }
+
+/* ---- mode cards ------------------------------------------------------------------------------------ */
+.mode-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .24rem; margin-bottom: .34rem; }
+.mode-card {
+  --bk-c: transparent;
+  --bk-l: .2rem;
+  position: relative;
 /* ---- hub backdrop ------------------------------------------------------------------------------------- */
 /* the entries' width follows 文字大小 (2.3rem at 小; §35.18 review: at a fixed 2.3rem the names had to stop at 小's size) */
 .lobby-hub { --hub-entry-w: calc(2.3 * var(--t)); --hub-gap: .14rem; background: #050807; }
@@ -737,6 +754,130 @@
   .create-box__test { font-size: 16px; }
   .create-box__test input { width: 32px; height: 32px; }
   .create-box__test em { font-size: 14px; }
+}
+.create-box .btn--xl { height: .92rem; font-size: calc(.32 * var(--t)); letter-spacing: .3em; }
+.create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+
+/* matching: 直接开始 / AI 补位开始 side by side */
+.match-start-row { display: flex; gap: .12rem; }
+.match-start-row .tt-anchor { flex: 1; min-width: 0; }
+.match-start-row .btn { letter-spacing: .12em; }
+/* startNow vote */
+.vote-box { display: flex; flex-direction: column; gap: .12rem; padding: .16rem; border: 1px solid var(--line-amber); border-radius: .08rem; background: rgba(0,0,0,.3); }
+.vote-box__title { display: flex; align-items: center; gap: .08rem; font-size: .2rem; color: var(--text-hi); }
+.vote-box__progress { display: flex; align-items: center; justify-content: center; gap: .04rem; font-size: .16rem; }
+
+/* ---- difficulty cards -------------------------------------------------------------------------------- */
+.diff-list { display: flex; flex-direction: column; gap: .14rem; }
+.diff-card {
+  --d-color: var(--amber);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
+  gap: .06rem .2rem;
+  padding: .18rem .24rem .18rem .36rem;
+  overflow: hidden;
+  text-align: left;
+  background: linear-gradient(90deg, rgba(28, 34, 31, .93), rgba(15, 19, 17, .93));
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  transition: border-color var(--t-med), box-shadow var(--t-med), background var(--t-med);
+  animation: card-in var(--t-slow) var(--ease-out) backwards;
+}
+.diff-card:nth-child(2) { animation-delay: 40ms; }
+.diff-card:nth-child(3) { animation-delay: 80ms; }
+.diff-card:nth-child(4) { animation-delay: 120ms; }
+.diff-card__bar { position: absolute; left: 0; top: 0; bottom: 0; width: .06rem; background: var(--d-color); opacity: .45; transition: opacity var(--t-med), box-shadow var(--t-med); }
+.diff-card__head { grid-column: 1 / -1; display: flex; align-items: center; gap: .1rem; min-width: 0; }
+.diff-card__glyph { width: .28rem; height: .28rem; color: var(--d-color); filter: drop-shadow(0 0 5px var(--d-color)); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--d-color) 55%, transparent)); }
+.diff-card__name { font-size: calc(.27 * var(--t)); font-weight: 900; letter-spacing: .06em; color: var(--d-color); }
+.diff-card__code { font-size: calc(.14 * var(--t)); color: var(--text-dim); letter-spacing: .1em; }
+.diff-card__meta { margin-left: auto; display: flex; align-items: center; gap: .04rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); white-space: nowrap; }
+.diff-card__meta .num { color: var(--text-hi); font-weight: 700; font-size: calc(.17 * var(--t)); }
+.diff-card__hidden {
+  margin-left: .08rem;
+  padding: 0 .07rem;
+  border: 1px solid transparent; border: 1px solid color-mix(in srgb, var(--d-color) 45%, transparent);
+  color: var(--d-color); color: color-mix(in srgb, var(--d-color) 80%, #fff);
+  font-size: calc(.12 * var(--t));
+  line-height: 1.6;
+}
+.diff-card__desc { grid-column: 1; font-size: calc(.16 * var(--t)); color: var(--text-md); }
+.diff-card__effects { grid-column: 1; display: flex; flex-wrap: wrap; gap: .04rem .2rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+.diff-card__effects span::before { content: '·'; margin-right: .05rem; color: var(--d-color); font-weight: 900; }
+/* battlefield pool note (config.json modes[].stages): 战场固定为 战场#01 / 战场随机（共N张） — the last item of the
+   effects row (no extra card height: the lobby must not scroll at 1280×720 / 1920×1080) */
+.diff-card__effects .diff-card__stage { display: inline-flex; align-self: flex-start; align-items: center; gap: .05rem; }
+.diff-card__effects .diff-card__stage::before { content: none; }
+.diff-card__stage .icon { flex: none; width: .15rem; height: .15rem; color: var(--d-color); opacity: .85; }
+.diff-card__check {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .03rem;
+  font-size: calc(.12 * var(--t));
+  color: var(--text-dim);
+}
+.diff-card__check .icon {
+  width: .46rem;
+  height: .46rem;
+  padding: .09rem;
+  border-radius: 50%;
+  border: 2px solid var(--line-2);
+  color: transparent;
+  transition: background var(--t-med), border-color var(--t-med), color var(--t-med), transform var(--t-med) var(--ease-out);
+}
+.diff-card__check span { opacity: 0; transition: opacity var(--t-med); }
+.diff-card:hover { border-color: var(--line-3); }
+.diff-card.is-selected {
+  border-color: var(--d-color); border-color: color-mix(in srgb, var(--d-color) 65%, transparent);
+  background: linear-gradient(90deg, #151a18, rgba(15, 19, 17, .95) 70%); background: linear-gradient(90deg, color-mix(in srgb, var(--d-color) 15%, #151a18), rgba(15, 19, 17, .95) 70%);
+  box-shadow: 0 0 .3rem transparent; box-shadow: 0 0 .3rem color-mix(in srgb, var(--d-color) 16%, transparent);
+}
+.diff-card.is-selected .diff-card__bar { opacity: 1; box-shadow: 0 0 .14rem var(--d-color); }
+.diff-card.is-selected .diff-card__check { color: var(--d-color); }
+.diff-card.is-selected .diff-card__check .icon { background: var(--d-color); border-color: var(--d-color); color: #150a04; transform: rotate(-8deg); }
+.diff-card.is-selected .diff-card__check span { opacity: 1; }
+
+/* ---- create ------------------------------------------------------------------------------------------ */
+.create-box { margin-top: .3rem; display: flex; flex-direction: column; gap: .12rem; }
+.create-box__test {
+  display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: .04rem .1rem;
+  color: #e8b84a; font-size: calc(.16 * var(--t));
+}
+.create-box__test input { width: .2rem; height: .2rem; margin: 0; flex: none; accent-color: #e8b84a; }
+.create-box__test em { flex-basis: 100%; font-style: normal; }
+@media (max-width: 720px) {
+  .create-box__test { font-size: 16px; }
+  .create-box__test input { width: 32px; height: 32px; }
+  .create-box__test em { font-size: 14px; }
+}
+.create-box .btn--xl { height: .92rem; font-size: calc(.32 * var(--t)); letter-spacing: .3em; }
+.create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
+
+/* match panel (hub layout): the 同盟匹配 entry opens this below the hub */
+.match-panel {
+  width: 100%; max-width: 19.2rem; margin: 0 auto; padding: 0 .6rem .4rem;
+  display: flex; flex-direction: column; gap: .14rem;
+}
+.match-panel .section-label { display: flex; align-items: center; gap: .1rem; }
+.match-panel__close { margin-left: auto; background: none; border: none; color: var(--text-lo); cursor: pointer; padding: .04rem; }
+.match-panel__close:hover { color: var(--text-hi); }
+.match-panel .diff-list { display: flex; flex-direction: column; gap: .14rem; }
+.match-panel .create-box { max-width: 9rem; }
+
+/* ---- quick match (快速匹配, js/screens/lobby.js) ------------------------------------------------------- */
+.mm-queuebox .panel__body { padding: .22rem .26rem; }
+.mm-queuebox__row { display: flex; align-items: center; gap: .3rem; }
+.mm-queuebox__text { display: flex; flex-direction: column; gap: .08rem; flex: 1; font-size: .3rem; color: var(--text-hi); }
+.mm-queuebox__text .t-dim { font-size: .24rem; }
+@media (max-width: 640px) {
+  .mode-cards { grid-template-columns: 1fr; }
+  .mm-queuebox__row { flex-wrap: wrap; }
 }
 .proto-hint { display: flex; align-items: center; gap: .08rem; min-height: .24rem; margin: 0; font-size: calc(.14 * var(--t)); color: #858b89; }
 .proto-hint .icon { flex: none; width: 1.1em; height: 1.1em; }

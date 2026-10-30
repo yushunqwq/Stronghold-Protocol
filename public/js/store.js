@@ -96,6 +96,12 @@ export const initialState = Object.freeze({
   emotes: [],
   clock: { offset: 0, rtt: null, synced: false },
   ui: { pendingJoin: null, restoring: false, buildStale: false },
+  // alliance match (server/matchmaking.js): null when not queued, else { inQueue, waiting, difficulty }
+  matchmaking: null,
+  // startNow vote: null when no vote, else { withBots, initiatorName, agree, disagree, total, needed, voted }
+  matchVote: null,
+  // online player count from the server (online.count broadcast), null until first push
+  onlineCount: null,
   // official versions (DESIGN §35.23, versions.js): welcome.versions (null: the switch is off), this browser's lobby choice
   // (the pref as stored — versions.js lobbyVersion checks it against the list) and the version of the stored match
   // 统计数据 replays (null when none: the lobby preference is never changed to show one). A match's version is its frames'

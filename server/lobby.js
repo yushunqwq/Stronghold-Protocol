@@ -231,7 +231,8 @@ import { aiTakeover, resetAiTakeover, reconcileAiTakeover } from './aiTakeover.j
 import { randomBytes, randomInt } from 'node:crypto';
 import { DIFFICULTIES, ERR, MAX_SEATS, MAX_SPECTATORS, ROOM_CODE_LEN, modeIdFor } from '../shared/constants.js';
 import { checkLoadout, checkLoadoutOps, cultivationCharIds, checkNotOwned, checkDiyPicks, charPotentialChanges, checkSkinSelection, operatorCharIds } from '../shared/protocol.js';
-import { encode, isErrCode, sendRaw, sendSession } from './net.js';
+import { encode, isDroppable, isErrCode, send, sendRaw, sendSession } from './net.js';
+import { Matchmaker } from './matchmaking.js';
 import { getData as defaultGetData, lookup } from './data.js';
 import { Match as DefaultMatch } from './match/Match.js';
 import { KITTED_CHARS } from './sim/content/kits/index.js';
@@ -602,6 +603,25 @@ export class Lobby {
      */
     this.autoApplyPlugins = null;
     this.offContentStale = plugins?.onContentStale?.((cs, ids) => this.pluginsChanged(cs, ids, 'content')) || null;
+    /** quick-match queue (server/matchmaking.js): groups players by difficulty, forms rooms on its own timer */
+    this.matchmaker = new Matchmaker({ lobby: this, now, options: options.matchmaking });
+    // online count: broadcast on connect/disconnect + every 30 s so the lobby top bar stays fresh.
+    // unref'd so tests (which construct Lobby directly) can still exit.
+    this._onlineTimer = setInterval(() => this.broadcastOnline(), 30000);
+    if (this._onlineTimer.unref) this._onlineTimer.unref();
+  }
+
+  /** Currently connected sessions (the lobby "在线" number). */
+  onlineCount() {
+    let n = 0;
+    for (const s of this.registry.all()) if (s.connected) n++;
+    return n;
+  }
+
+  /** Push the current online count to every connected session. */
+  broadcastOnline() {
+    const msg = { t: 'online.count', count: this.onlineCount() };
+    for (const s of this.registry.all()) if (s.connected) sendSession(s, msg);
   }
 
   /**
@@ -691,7 +711,16 @@ export class Lobby {
       for (const s of r.seats) if (s && !s.left) (s.isBot ? bots++ : humans++);
       spectators += r.spectators.length;
     }
-    return { rooms: this.rooms.size, matches, humans, bots, spectators };
+    return { rooms: this.rooms.size, matches, humans, bots, spectators, ...this.matchmaker.stats() };
+  }
+
+  /**
+   * A raw WebSocket just connected (pre-hello): push the online count immediately so the
+   * title screen shows it before the user sends hello.
+   * @param {import('./net.js').Connection} conn
+   */
+  onConnect(conn) {
+    send(conn.ws, { t: 'online.count', count: this.onlineCount() });
   }
 
   // ---------------------------------------------------------------------------------------------------
@@ -704,7 +733,7 @@ export class Lobby {
    * @param {{ resumed: boolean, repeat: boolean }} info
    */
   onHello(session, { resumed, repeat }) {
-    if (!resumed && !repeat) return;
+    if (!resumed && !repeat) { this.broadcastOnline(); return; }
     const room = this.roomOf(session);
     if (!room) {
       if (session.notice) {
@@ -829,6 +858,11 @@ export class Lobby {
       case 'room.card': return this.card(session, msg);
       case 'room.spectate': return this.spectate(session, msg);
       case 'room.removeSpectator': return this.removeSpectator(session, msg);
+      case 'matchmaking.join': return this.matchmaker.join(session, msg);
+      case 'matchmaking.leave': this.matchmaker.leave(session.playerId); return OK;
+      case 'matchmaking.startNow': return this.matchmaker.startNow(session, msg);
+      case 'matchmaking.vote': return this.matchmaker.vote(session, msg);
+      case 'matchmaking.voteCancel': return this.matchmaker.cancelVote(session);
       case 'room.setPlugins': return this.setPlugins(session, msg);
       case 'room.setMode': return this.setMode(session, msg);
       case 'room.contentReady': return this.contentReady(session, msg, ctx);
@@ -849,6 +883,8 @@ export class Lobby {
   /** The session's socket closed. @param {import('./net.js').Session} session */
   onDisconnect(session) {
     this.clearResync(session.playerId); // the next resume resyncs immediately
+    this.matchmaker.onDisconnect(session); // a blip cancels matchmaking
+    this.broadcastOnline(); // net.js already marked session.connected = false
     const room = this.roomOf(session);
     // a solo run may be resumed within singleReconnectTime (24 h); everything else keeps the registry's window
     session.resumeWindowMs = room && room.match && room.mode === 'solo' ? this.soloResumeWindowMs(room) : null;
@@ -879,6 +915,7 @@ export class Lobby {
     session.notice = null;
     session.pendingResult = null;
     this.clearResync(session.playerId);
+    this.matchmaker.onExpire(session);
     const code = session.roomCode;
     const room = code ? this.rooms.get(code) : null;
     // in order with the room's messages when its match runs in a match host (header "Gameplay plugins")
@@ -904,6 +941,8 @@ export class Lobby {
     this.graceTimers.clear();
     for (const t of this.resyncTimers.values()) clearTimeout(t);
     this.resyncTimers.clear();
+    try { this.matchmaker.shutdown(); } catch (e) { this.log.error('[shutdown] matchmaking', e); }
+    if (this._onlineTimer) clearInterval(this._onlineTimer);
   }
 
   // ---------------------------------------------------------------------------------------------------
@@ -956,6 +995,7 @@ export class Lobby {
     // before the creator leaves the old room (a refusal keeps them there), so a set that room alone holds counts as freed
     // (limits.maxSets), as when the room went first before M1
     let initial = this.baseContent(version);
+    this.matchmaker.leave(session.playerId); // a new room cancels matchmaking (idempotent)
     const defaults = this.plugins?.defaults?.() || [];
     if (defaults.length) {
       const r = this.resolveContent(null, defaults, {}, version, leaving ? cur.content : null);
@@ -1002,6 +1042,7 @@ export class Lobby {
     // its toast reaches the members who saw the vote (a spectator sitting down too), never a joiner who did not
     if (room.versionVote) this.voidVersionVote(room, 'members');
     if (cur) this.removeMember(cur, session.playerId);
+    this.matchmaker.leave(session.playerId); // joining a room cancels matchmaking (idempotent)
     room.seats[idx] = this.humanSeat(idx, session, room);
     session.roomCode = room.code;
     session.notice = null;
@@ -1037,6 +1078,7 @@ export class Lobby {
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     if (room.spectators.length >= MAX_SPECTATORS) return fail(ERR.ROOM_FULL, 'no free spectator seat');
     if (cur) this.removeMember(cur, session.playerId);
+    this.matchmaker.leave(session.playerId); // spectating cancels matchmaking (idempotent)
     room.spectators.push({ playerId: session.playerId, name: session.name, connected: session.connected });
     session.roomCode = room.code;
     session.notice = null;
@@ -1560,21 +1602,27 @@ export class Lobby {
     this.broadcastState(room);
   }
 
-  addBot(session) {
-    const room = this.roomOf(session);
-    if (!room) return fail(ERR.NOT_IN_ROOM);
-    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
-    if (room.match) return fail(ERR.ROOM_STARTED);
-    this.dropReplay(room, session.playerId);
-    if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo rooms cannot have AI teammates');
+  /** Add an AI teammate to a room's free seat (no session/host checks — for matchmaking). @returns {boolean} added */
+  addBotDirect(room) {
+    if (room.mode === 'solo') return false;
     const idx = room.freeSeat();
-    if (idx < 0) return fail(ERR.ROOM_FULL);
+    if (idx < 0) return false;
     const used = new Set(room.seats.filter((s) => s && s.isBot).map((s) => s.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) || `AI·${idx + 1}`;
     let playerId;
     do playerId = 'ai_' + randomBytes(4).toString('hex'); while (room.seatOf(playerId));
     room.seats[idx] = { seat: idx, playerId, name, isBot: true, ready: true, connected: true, left: false };
     this.broadcastState(room);
+    return true;
+  }
+
+  addBot(session) {
+    const room = this.roomOf(session);
+    if (!room) return fail(ERR.NOT_IN_ROOM);
+    if (room.hostId !== session.playerId) return fail(ERR.NOT_HOST);
+    if (room.match) return fail(ERR.ROOM_STARTED);
+    this.dropReplay(room, session.playerId);
+    if (!this.addBotDirect(room)) return fail(ERR.ROOM_FULL, room.mode === 'solo' ? 'solo rooms cannot have AI teammates' : undefined);
     return OK;
   }
 

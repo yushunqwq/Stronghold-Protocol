@@ -457,6 +457,17 @@ export function PauseButton({ paused, busy = false, onToggle }) {
   <//>`;
 }
 
+/** Client 2× speed toggle (top-right, combat only): 1× = normal, 2× = double sim speed. */
+export function SpeedButton({ mul = 1, onToggle }) {
+  const fast = mul >= 2;
+  return html`<${Tooltip} text=${fast ? t('恢复常速') : t('二倍速')} placement="bottom">
+    <button type="button" class=${cx('speedbtn', 'tapx', fast && 'is-on')} aria-pressed=${fast ? 'true' : 'false'}
+        aria-label=${fast ? t('恢复常速') : t('二倍速')} data-testid="speed" onClick=${() => onToggle?.()}>
+      <span class="speedbtn__label num">${fast ? '2×' : '1×'}</span>
+    </button>
+  <//>`;
+}
+
 /**
  * Top bar. Its centre (PR #643 / #827, the event's top bar, video 8:01): [🔍] in a bracket frame · + · a long thin band
  * with 回合 N on the left half and the LP tower on the right half, the phase capsule as a bevelled plate in the middle
@@ -480,7 +491,7 @@ export function PauseButton({ paused, busy = false, onToggle }) {
  *   held: the HUD waits hidden under 协议启动！ — a phase change's capsule scene waits for it (useCapsuleFx)
  */
 export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, onReady, readyBusy, readyCount, playerCount, pen = false, penAvail = false, onPen = () => {},
-  config = null, frozenAt = null, pause = null, live = null, spectator = false,
+  config = null, frozenAt = null, pause = null, live = null, spectator = false, speed = null,
   spectators = null, myId = null, isHost = false, onRemoveSpectator = null, room = null, held = false }) {
   const phase = pub?.phase;
   const boss = isBossPhase(phase);
@@ -562,6 +573,7 @@ export function TopBar({ pub, priv, conn, hud, total, drawer, onExit, onDrawer, 
           ? html`<${Countdown} seconds=${frozenSecs} total=${total ?? undefined} size="md" label="PAUSED" />`
           : html`<${Countdown} deadline=${pub?.deadline} total=${total ?? undefined} size="md" />`}
         ${pause && (pause.show || pause.paused) ? html`<${PauseButton} paused=${!!pause.paused} busy=${pause.busy} onToggle=${pause.onToggle} />` : null}
+        ${speed ? html`<${SpeedButton} mul=${speed.mul} onToggle=${speed.onToggle} />` : null}
       </div>
       <${OvertimeWarning} ot=${ot} />
       ${showReady ? html`<${ReadyToggle} priv=${priv} onToggle=${onReady} busy=${readyBusy} readyCount=${readyCount} total=${playerCount} />` : null}
